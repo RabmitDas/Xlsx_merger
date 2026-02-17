@@ -3,244 +3,489 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LCMS Metabolomics Pipeline Guide</title>
+  <title>LCMS Tools — Metabolomics Pipeline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f1117; --surface: #1a1d27; --surface2: #21253a;
-      --accent: #6c8ef5; --accent2: #a78bfa; --green: #34d399;
-      --orange: #fb923c; --text: #e2e8f0; --muted: #94a3b8;
-      --border: #2d3351; --code-bg: #0d1117;
+      --bg:        #08090d;
+      --panel:     #0e1018;
+      --card:      #12151f;
+      --border:    #1e2235;
+      --border2:   #2a304a;
+      --accent:    #4f9cf9;
+      --accent2:   #7dd4a8;
+      --accent3:   #f9a84f;
+      --text:      #dde3f0;
+      --muted:     #606882;
+      --muted2:    #8892a8;
+      --mono:      'DM Mono', monospace;
+      --sans:      'Syne', sans-serif;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
 
-    header { background: linear-gradient(135deg,#1a1d27,#0f1117); border-bottom:1px solid var(--border); padding:48px 0 40px; text-align:center; position:relative; overflow:hidden; }
-    header::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 70% 80% at 50% -20%,rgba(108,142,245,.18),transparent 70%); pointer-events:none; }
-    .badge { display:inline-block; background:rgba(108,142,245,.15); border:1px solid rgba(108,142,245,.4); color:var(--accent); font-size:.72rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; padding:4px 14px; border-radius:999px; margin-bottom:18px; }
-    header h1 { font-size:clamp(1.9rem,4vw,2.8rem); font-weight:700; letter-spacing:-.02em; background:linear-gradient(120deg,#e2e8f0 30%,var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-    header p { color:var(--muted); margin-top:10px; font-size:1rem; max-width:540px; margin-inline:auto; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    .container { max-width:900px; margin:0 auto; padding:0 24px 80px; }
-    .section { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:32px 36px; margin-top:32px; }
-    .section-header { display:flex; align-items:center; gap:14px; margin-bottom:22px; }
-    .section-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
-    .icon-blue  { background:rgba(108,142,245,.15); }
-    .icon-green { background:rgba(52,211,153,.15); }
-    .icon-purple{ background:rgba(167,139,250,.15); }
-    .icon-orange{ background:rgba(251,146,60,.15); }
-    .section h2 { font-size:1.15rem; font-weight:600; }
-    .section h2 small { display:block; font-size:.78rem; font-weight:400; color:var(--muted); margin-top:2px; }
+    html { scroll-behavior: smooth; }
 
-    p { color:var(--muted); font-size:.94rem; margin-bottom:12px; }
-    p:last-child { margin-bottom:0; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-    .folder-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:4px; }
-    .folder-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
-    .folder-card .lbl { font-size:.7rem; font-weight:600; letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; }
-    .folder-card .name { font-family:monospace; font-size:1rem; font-weight:600; color:var(--text); }
-    .folder-card p { margin-top:6px; font-size:.82rem; }
+    /* ─── Grid background ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(79,156,249,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79,156,249,.04) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
 
-    .rules { list-style:none; display:flex; flex-direction:column; gap:12px; }
-    .rules li { display:flex; gap:14px; align-items:flex-start; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
-    .ri { font-size:1.1rem; flex-shrink:0; margin-top:1px; }
-    .rb strong { display:block; font-size:.92rem; color:var(--text); margin-bottom:3px; }
-    .rb span { font-size:.83rem; color:var(--muted); }
+    /* ─── Glow blobs ─── */
+    .glow-1, .glow-2 {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: .35;
+    }
+    .glow-1 {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, #1a3a6b 0%, transparent 70%);
+      top: -200px; left: -150px;
+      animation: driftA 18s ease-in-out infinite;
+    }
+    .glow-2 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #0d3320 0%, transparent 70%);
+      bottom: -150px; right: -100px;
+      animation: driftB 22s ease-in-out infinite;
+    }
+    @keyframes driftA {
+      0%,100% { transform: translate(0,0); }
+      50%      { transform: translate(60px, 40px); }
+    }
+    @keyframes driftB {
+      0%,100% { transform: translate(0,0); }
+      50%      { transform: translate(-50px,-30px); }
+    }
 
-    .steps { display:flex; flex-direction:column; }
-    .step { display:flex; gap:18px; position:relative; }
-    .step:not(:last-child)::after { content:''; position:absolute; left:19px; top:44px; width:2px; height:calc(100% - 16px); background:var(--border); }
-    .snum { width:40px; height:40px; border-radius:50%; border:2px solid var(--accent); background:rgba(108,142,245,.1); display:flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; color:var(--accent); flex-shrink:0; z-index:1; }
-    .sbody { padding:8px 0 28px; flex:1; }
-    .sbody strong { display:block; font-size:.95rem; color:var(--text); margin-bottom:4px; }
-    .sbody p { font-size:.85rem; margin:0; }
+    /* ─── Scan line ─── */
+    .scan {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      animation: scan 6s ease-in-out 0.5s forwards;
+      z-index: 10;
+      pointer-events: none;
+    }
+    @keyframes scan {
+      0%   { opacity: 0;   top: 0; }
+      10%  { opacity: .6; }
+      90%  { opacity: .3; }
+      100% { opacity: 0;   top: 100%; }
+    }
 
-    table { width:100%; border-collapse:collapse; font-size:.88rem; }
-    th { text-align:left; color:var(--muted); font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; padding:0 14px 10px; border-bottom:1px solid var(--border); }
-    td { padding:12px 14px; border-bottom:1px solid rgba(45,51,81,.6); vertical-align:top; }
-    tr:last-child td { border-bottom:none; }
-    tr:hover td { background:rgba(108,142,245,.04); }
+    /* ─── Layout ─── */
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 28px 100px;
+    }
 
-    code { font-family:monospace; background:var(--code-bg); border:1px solid var(--border); border-radius:5px; padding:1px 7px; font-size:.87em; color:var(--accent2); }
+    /* ─── Top bar ─── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 0 0;
+      opacity: 0;
+      animation: fadeUp .6s ease .2s forwards;
+    }
+    .logo {
+      font-family: var(--mono);
+      font-size: .78rem;
+      color: var(--muted);
+      letter-spacing: .06em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: .5; transform: scale(.7); }
+    }
+    .version {
+      font-family: var(--mono);
+      font-size: .7rem;
+      color: var(--muted);
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
 
-    .warn { background:rgba(251,146,60,.08); border:1px solid rgba(251,146,60,.3); border-radius:10px; padding:14px 18px; font-size:.87rem; color:#fdba74; display:flex; gap:10px; margin-top:16px; }
-    .tip  { background:rgba(52,211,153,.08);  border:1px solid rgba(52,211,153,.25);  border-radius:10px; padding:14px 18px; font-size:.87rem; color:#6ee7b7;  display:flex; gap:10px; margin-top:16px; }
+    /* ─── Hero ─── */
+    .hero {
+      padding: 80px 0 64px;
+      opacity: 0;
+      animation: fadeUp .7s ease .35s forwards;
+    }
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hero-eyebrow::before {
+      content: '';
+      width: 32px; height: 1px;
+      background: var(--accent);
+      display: block;
+    }
+    .hero h1 {
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -.03em;
+      color: var(--text);
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(79,156,249,.6);
+    }
+    .hero-sub {
+      margin-top: 24px;
+      font-family: var(--mono);
+      font-size: .88rem;
+      color: var(--muted2);
+      max-width: 520px;
+      line-height: 1.8;
+    }
 
-    .code-block { background:var(--code-bg); border:1px solid var(--border); border-radius:10px; padding:18px 22px; margin-top:16px; overflow-x:auto; }
-    .code-block pre { font-family:monospace; font-size:.84rem; color:#c9d1d9; line-height:1.6; white-space:pre; }
-    .cm { color:#6272a4; } .str { color:#f1fa8c; } .var { color:#8be9fd; }
+    /* ─── Divider ─── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 40px;
+      opacity: 0;
+      animation: fadeUp .6s ease .5s forwards;
+    }
+    .divider span {
+      font-family: var(--mono);
+      font-size: .68rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .divider::before { flex: 0 0 0; }
 
-    .fn-list { display:flex; flex-direction:column; gap:14px; }
-    .fn-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
-    .fn-card .sig { font-family:monospace; font-size:.9rem; color:var(--green); margin-bottom:8px; }
-    .fn-card .desc { font-size:.85rem; color:var(--muted); }
+    /* ─── Tool cards ─── */
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      opacity: 0;
+      animation: fadeUp .7s ease .6s forwards;
+    }
 
-    footer { text-align:center; padding:28px; border-top:1px solid var(--border); font-size:.78rem; color:var(--muted); }
-    @media(max-width:600px){ .section{padding:22px 20px;} .folder-grid{grid-template-columns:1fr;} }
+    .card {
+      position: relative;
+      display: block;
+      text-decoration: none;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px 28px 28px;
+      overflow: hidden;
+      transition: border-color .25s, transform .25s, box-shadow .25s;
+      cursor: pointer;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity .3s;
+      border-radius: 12px;
+    }
+    .card-pos::before  { background: radial-gradient(ellipse 80% 60% at 0% 0%, rgba(79,156,249,.08), transparent 60%); }
+    .card-vlkp::before { background: radial-gradient(ellipse 80% 60% at 0% 0%, rgba(125,212,168,.08), transparent 60%); }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: var(--border2);
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    .card:hover::before { opacity: 1; }
+
+    /* corner accent */
+    .card-corner {
+      position: absolute;
+      top: 0; right: 0;
+      width: 60px; height: 60px;
+      overflow: hidden;
+    }
+    .card-corner::before {
+      content: '';
+      position: absolute;
+      top: -1px; right: -1px;
+      width: 0; height: 0;
+      border-style: solid;
+      border-width: 0 42px 42px 0;
+      transition: border-color .25s;
+    }
+    .card-pos  .card-corner::before { border-color: transparent rgba(79,156,249,.2) transparent transparent; }
+    .card-vlkp .card-corner::before { border-color: transparent rgba(125,212,168,.2) transparent transparent; }
+    .card:hover .card-corner::before { border-right-color: rgba(255,255,255,.08); }
+
+    .card-num {
+      font-family: var(--mono);
+      font-size: .65rem;
+      letter-spacing: .15em;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .card-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      margin-bottom: 20px;
+    }
+    .card-pos  .card-icon { background: rgba(79,156,249,.1);  border: 1px solid rgba(79,156,249,.2); }
+    .card-vlkp .card-icon { background: rgba(125,212,168,.1); border: 1px solid rgba(125,212,168,.2); }
+
+    .card h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      font-family: var(--mono);
+      font-size: .8rem;
+      color: var(--muted2);
+      line-height: 1.7;
+    }
+
+    .card-filename {
+      margin-top: 24px;
+      font-family: var(--mono);
+      font-size: .7rem;
+      color: var(--muted);
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 6px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: color .2s, border-color .2s, background .2s;
+    }
+    .card-filename::before {
+      content: '→';
+      font-size: .75rem;
+    }
+    .card-pos:hover  .card-filename { color: var(--accent);  border-color: rgba(79,156,249,.35);  background: rgba(79,156,249,.06); }
+    .card-vlkp:hover .card-filename { color: var(--accent2); border-color: rgba(125,212,168,.35); background: rgba(125,212,168,.06); }
+
+    /* ─── Info strip ─── */
+    .info-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 20px;
+      opacity: 0;
+      animation: fadeUp .6s ease .8s forwards;
+    }
+    .info-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+    }
+    .info-item .info-label {
+      font-family: var(--mono);
+      font-size: .62rem;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .info-item .info-val {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .info-item .info-sub {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 24px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      opacity: 0;
+      animation: fadeUp .5s ease 1s forwards;
+    }
+    footer span {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    footer .foot-right {
+      display: flex;
+      gap: 20px;
+    }
+    footer .foot-right span { color: var(--muted); }
+
+    /* ─── Animations ─── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 620px) {
+      .cards       { grid-template-columns: 1fr; }
+      .info-strip  { grid-template-columns: 1fr 1fr; }
+      .info-strip .info-item:last-child { grid-column: 1 / -1; }
+      .hero h1     { font-size: 2.2rem; }
+    }
   </style>
 </head>
 <body>
 
-<header>
-  <div class="badge">Metabolomics · LC-MS Pipeline</div>
-  <h1>LCMS Data Processing Guide</h1>
-  <p>Step-by-step instructions for running the duplicate-analysis pipeline on your Excel metabolomics files.</p>
-</header>
+<div class="glow-1"></div>
+<div class="glow-2"></div>
+<div class="scan"></div>
 
-<div class="container">
+<div class="wrapper">
 
-  <!-- 1. Folders -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-blue">📁</div>
-      <h2>Step 1 — Create Your Four Folders<small>Required directory structure before running the script</small></h2>
+  <!-- Top bar -->
+  <nav class="topbar">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      LC-MS PIPELINE SUITE
     </div>
-    <p>Create four folders on your computer and set their paths as the four variables at the bottom of the notebook cell.</p>
-    <div class="folder-grid">
-      <div class="folder-card">
-        <div class="lbl" style="color:var(--accent)">input_folder1</div>
-        <div class="name">Positive/</div>
-        <p>First set of Excel files (e.g. positive-ion mode runs).</p>
-      </div>
-      <div class="folder-card">
-        <div class="lbl" style="color:var(--accent2)">input_folder2</div>
-        <div class="name">folder_2/</div>
-        <p>Second set of Excel files. <strong style="color:var(--orange)">Must NOT start with "n" or "N".</strong></p>
-      </div>
-      <div class="folder-card">
-        <div class="lbl" style="color:var(--green)">merged_folder</div>
-        <div class="name">Merged/</div>
-        <p>Intermediate folder where combined files are temporarily stored.</p>
-      </div>
-      <div class="folder-card">
-        <div class="lbl" style="color:var(--orange)">final_folder</div>
-        <div class="name">Finaloutput/</div>
-        <p>Destination for the processed <code>_result.xlsx</code> files.</p>
-      </div>
+    <div class="version">v1.0</div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-eyebrow">Metabolomics · Data Processing</div>
+    <h1>LCMS<br><em>Analysis</em><br>Toolkit</h1>
+    <p class="hero-sub">
+      Two tools for processing, merging, and aligning<br>
+      LC-MS metabolomics data from Excel workbooks.
+    </p>
+  </section>
+
+  <!-- Section label -->
+  <div class="divider"><span>Select a tool</span></div>
+
+  <!-- Cards -->
+  <div class="cards">
+
+    <a href="POS_NEG_merger.html" class="card card-pos">
+      <div class="card-corner"></div>
+      <div class="card-num">TOOL 01</div>
+      <div class="card-icon">⚗️</div>
+      <h2>Positive / Negative Merger</h2>
+      <p>
+        Merge matching Excel files from two ion-mode folders,
+        remove outlier replicates via Z-score filtering,
+        and export clean mean-area results per metabolite.
+      </p>
+      <div class="card-filename">POS_NEG_merger.html</div>
+    </a>
+
+    <a href="vlookup_merger.html" class="card card-vlkp">
+      <div class="card-corner"></div>
+      <div class="card-num">TOOL 02</div>
+      <div class="card-icon">🔗</div>
+      <h2>VLookup Merger</h2>
+      <p>
+        Align and combine metabolite tables across datasets
+        using lookup-based matching — for joining results
+        from multiple analytical batches or sample groups.
+      </p>
+      <div class="card-filename">vlookup_merger.html</div>
+    </a>
+
+  </div>
+
+  <!-- Info strip -->
+  <div class="info-strip">
+    <div class="info-item">
+      <div class="info-label">Input format</div>
+      <div class="info-val">.xlsx</div>
+      <div class="info-sub">Multi-sheet Excel workbooks</div>
     </div>
-    <div class="warn">
-      <span>⚠️</span>
-      <span><strong>Folder naming rule:</strong> The second input folder (often "negative mode") must <em>not</em> start with <strong>N</strong> or <strong>n</strong>. Use <code>folder_2</code>, <code>Batch2</code>, or <code>pNegative</code> etc.</span>
+    <div class="info-item">
+      <div class="info-label">Required columns</div>
+      <div class="info-val">2 cols</div>
+      <div class="info-sub">METABOLITE NAME · AREA</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">Outlier method</div>
+      <div class="info-val">Z-score</div>
+      <div class="info-sub">Threshold |z| &lt; 1.5</div>
     </div>
   </div>
 
-  <!-- 2. File Rules -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-orange">📋</div>
-      <h2>Step 2 — Prepare Your Excel Files<small>Rules your spreadsheets must follow</small></h2>
-    </div>
-    <ul class="rules">
-      <li>
-        <span class="ri">🔤</span>
-        <div class="rb"><strong>Identical file names in both folders</strong><span>If <code>input_folder1</code> has <code>NONRESPONDER_SERUM.xlsx</code>, then <code>input_folder2</code> must also have a file named exactly <code>NONRESPONDER_SERUM.xlsx</code>. Unmatched files are skipped.</span></div>
-      </li>
-      <li>
-        <span class="ri">📊</span>
-        <div class="rb"><strong>Identical sheet names across both files</strong><span>Every sheet in file 1 must exist in file 2 with the same name (e.g. <code>N2.2FB</code>, <code>N22FB</code>, <code>N23FB</code>…).</span></div>
-      </li>
-      <li>
-        <span class="ri">🏷️</span>
-        <div class="rb"><strong>Required column headers: METABOLITE NAME &amp; AREA</strong><span>Every sheet must contain exactly these two columns. The script strips surrounding whitespace, but names must otherwise match exactly.</span></div>
-      </li>
-    </ul>
-    <div class="tip">
-      <span>💡</span>
-      <span><strong>Quick check:</strong> Open each sheet and confirm the header row reads <code>METABOLITE NAME</code> | <code>AREA</code>. Typos will cause a KeyError at runtime.</span>
-    </div>
+</div><!-- /wrapper -->
+
+<footer>
+  <span>LCMS Toolkit &nbsp;·&nbsp; Author: Kartika</span>
+  <div class="foot-right">
+    <span>Python 3 · pandas · openpyxl</span>
   </div>
+</footer>
 
-  <!-- 3. Column Reference -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-purple">🔬</div>
-      <h2>Step 3 — Column Reference<small>What the script expects as input and produces as output</small></h2>
-    </div>
-    <table>
-      <thead><tr><th>Column</th><th>Stage</th><th>Description</th></tr></thead>
-      <tbody>
-        <tr><td><code>METABOLITE NAME</code></td><td>Input</td><td>Name of each metabolite. First letter is capitalised automatically by the script.</td></tr>
-        <tr><td><code>AREA</code></td><td>Input</td><td>Numeric peak area. Scientific notation supported; non-numeric rows are dropped.</td></tr>
-        <tr><td><code>Area</code></td><td>Output</td><td>Mean peak area across all retained replicates (after outlier removal).</td></tr>
-        <tr><td><code>n</code></td><td>Output</td><td>Number of replicates retained after outlier filtering.</td></tr>
-        <tr><td><code>z_score</code></td><td>Output</td><td>List of Z-scores for each kept measurement. Single-replicate metabolites get Z = 0.</td></tr>
-        <tr><td><code>std</code></td><td>Output</td><td>Standard deviation across retained replicates; 0 when only one measurement remains.</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- 4. Pipeline -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-green">⚙️</div>
-      <h2>Step 4 — How the Pipeline Works<small>Three automatic stages run for every Excel file pair</small></h2>
-    </div>
-    <div class="steps">
-      <div class="step">
-        <div class="snum">1</div>
-        <div class="sbody"><strong>Merge — merge_sheets()</strong><p>Reads each matching sheet from file 1 and file 2, aligns columns, and stacks the rows. The combined file is saved to <code>merged_folder</code> as <code>filename_merged.xlsx</code>.</p></div>
-      </div>
-      <div class="step">
-        <div class="snum">2</div>
-        <div class="sbody"><strong>Outlier Removal — duplicate_analysis()</strong><p>Computes a Z-score per metabolite across replicates and drops any measurement where |Z| ≥ 1.5. Single-replicate metabolites are kept with Z = 0.</p></div>
-      </div>
-      <div class="step">
-        <div class="snum">3</div>
-        <div class="sbody"><strong>Aggregate &amp; Save — process_excel_file()</strong><p>Groups by metabolite name, computes mean area, count, and std, then writes the final sheets to <code>final_folder</code> as <code>filename_result.xlsx</code>.</p></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. Config -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-blue">🛠️</div>
-      <h2>Step 5 — Configure the Script<small>Edit these four lines before running the notebook</small></h2>
-    </div>
-    <p>At the bottom of the notebook cell, update the path variables to point to your folders:</p>
-    <div class="code-block"><pre><span class="cm"># Update these four paths to match your system</span>
-<span class="var">input_folder1</span> = <span class="str">"C:/lcms/Positive"</span>      <span class="cm"># first set of .xlsx files</span>
-<span class="var">input_folder2</span> = <span class="str">"C:/lcms/folder_2"</span>      <span class="cm"># second set (no leading N/n!)</span>
-<span class="var">merged_folder</span> = <span class="str">"C:/lcms/Merged"</span>        <span class="cm"># intermediate merged files</span>
-<span class="var">final_folder</span>  = <span class="str">"C:/lcms/Finaloutput"</span>   <span class="cm"># final _result.xlsx outputs</span></pre></div>
-    <div class="tip">
-      <span>💡</span>
-      <span>Always use <strong>forward slashes</strong> <code>/</code> in paths. The script already handles backslash conversion, but forward slashes work safely on both Windows and macOS.</span>
-    </div>
-  </div>
-
-  <!-- 6. Functions -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-purple">🧩</div>
-      <h2>Function Reference<small>What each function in the script does</small></h2>
-    </div>
-    <div class="fn-list">
-      <div class="fn-card"><div class="sig">duplicate_analysis(per_sheet)</div><div class="desc">Core routine. Strips column names, converts AREA to numeric, capitalises metabolite names, removes outliers via Z-score (|z| &lt; 1.5), returns grouped DataFrame with mean area, count, z_score list, and std.</div></div>
-      <div class="fn-card"><div class="sig">align_and_concat(df1, df2)</div><div class="desc">Unifies column sets (union), reindexes both DataFrames to the combined schema, and vertically concatenates them. Called internally by <code>merge_sheets</code>.</div></div>
-      <div class="fn-card"><div class="sig">merge_sheets(file1, file2, output_file)</div><div class="desc">Iterates over all sheets in <code>file1</code>, reads the matching sheet from <code>file2</code>, calls <code>align_and_concat</code>, and writes each merged sheet to <code>output_file</code>.</div></div>
-      <div class="fn-card"><div class="sig">process_excel_file(input_file, output_file)</div><div class="desc">Iterates over all sheets in a merged file, runs <code>duplicate_analysis</code> on each, and writes cleaned result sheets to <code>output_file</code>.</div></div>
-      <div class="fn-card"><div class="sig">process_folder(input_folder1, input_folder2, merged_folder, final_folder)</div><div class="desc">Top-level orchestrator. Loops over every <code>.xlsx</code> in <code>input_folder1</code>, verifies a matching file in <code>input_folder2</code>, then calls <code>merge_sheets</code> + <code>process_excel_file</code> for each pair.</div></div>
-    </div>
-  </div>
-
-  <!-- 7. Checklist -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-icon icon-green">✅</div>
-      <h2>Pre-run Checklist<small>Verify all of these before clicking Run All</small></h2>
-    </div>
-    <ul class="rules">
-      <li><span class="ri">📁</span><div class="rb"><strong>4 folders created</strong><span>Positive, folder_2 (non-N name), Merged, Finaloutput</span></div></li>
-      <li><span class="ri">🔡</span><div class="rb"><strong>No folder name starts with N or n</strong><span>Rename "Negative" → "folder_2", "Batch2", or any non-N name</span></div></li>
-      <li><span class="ri">🗂️</span><div class="rb"><strong>File names identical in both input folders</strong><span>Capitalisation, spacing, and .xlsx extension must match exactly</span></div></li>
-      <li><span class="ri">📑</span><div class="rb"><strong>Sheet names match across paired files</strong><span>Every sheet in file 1 must have the same name in file 2</span></div></li>
-      <li><span class="ri">🏷️</span><div class="rb"><strong>Column headers are exactly METABOLITE NAME and AREA</strong><span>No extra spaces, no alternate capitalisation, no missing columns</span></div></li>
-      <li><span class="ri">📍</span><div class="rb"><strong>Paths updated in the script</strong><span>All four variables point to real, existing folders on your machine</span></div></li>
-    </ul>
-  </div>
-
-</div>
-
-<footer>LCMS Metabolomics Pipeline &nbsp;·&nbsp; Author: Rabmit &nbsp;·&nbsp; Python 3 · pandas · openpyxl · xlsxwriter</footer>
 </body>
 </html>
