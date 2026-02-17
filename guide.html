@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>LCMS — Step-by-step Guide</title>
+  <style>
+    :root{--bg:#0f1117;--surface:#1a1d27;--surface2:#21253a;--accent:#6c8ef5;--accent2:#a78bfa;--green:#34d399;--orange:#fb923c;--text:#e2e8f0;--muted:#94a3b8;--border:#2d3351;--code-bg:#0d1117;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.7;}
+    nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;gap:32px;height:56px;}
+    nav .logo{font-weight:700;font-size:.95rem;color:var(--accent);text-decoration:none;}
+    nav a{color:var(--muted);text-decoration:none;font-size:.88rem;transition:color .15s;}
+    nav a:hover,nav a.active{color:var(--text);}
+    .page-header{padding:40px 0 30px;border-bottom:1px solid var(--border);text-align:center;background:var(--surface);}
+    .page-header h1{font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;letter-spacing:-.02em;}
+    .page-header p{color:var(--muted);margin-top:8px;font-size:.95rem;}
+    .container{max-width:860px;margin:0 auto;padding:0 24px 80px;}
+    .section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:30px 34px;margin-top:28px;}
+    .sh{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+    .si{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;}
+    .ib{background:rgba(108,142,245,.15);} .ig{background:rgba(52,211,153,.15);} .ip{background:rgba(167,139,250,.15);} .io{background:rgba(251,146,60,.15);}
+    .section h2{font-size:1.1rem;font-weight:600;}
+    .section h2 small{display:block;font-size:.77rem;font-weight:400;color:var(--muted);margin-top:1px;}
+    p{color:var(--muted);font-size:.93rem;margin-bottom:12px;}
+    p:last-child{margin-bottom:0;}
+    .folder-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;}
+    .fc{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:15px 17px;}
+    .fc .lbl{font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;}
+    .fc .nm{font-family:monospace;font-size:.97rem;font-weight:600;color:var(--text);}
+    .fc p{margin-top:5px;font-size:.81rem;}
+    .rules{list-style:none;display:flex;flex-direction:column;gap:11px;}
+    .rules li{display:flex;gap:13px;align-items:flex-start;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+    .ri{font-size:1.05rem;flex-shrink:0;margin-top:2px;}
+    .rb strong{display:block;font-size:.91rem;color:var(--text);margin-bottom:2px;}
+    .rb span{font-size:.82rem;color:var(--muted);}
+    .steps{display:flex;flex-direction:column;}
+    .step{display:flex;gap:16px;position:relative;}
+    .step:not(:last-child)::after{content:'';position:absolute;left:18px;top:42px;width:2px;height:calc(100% - 14px);background:var(--border);}
+    .snum{width:38px;height:38px;border-radius:50%;border:2px solid var(--accent);background:rgba(108,142,245,.1);display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:700;color:var(--accent);flex-shrink:0;z-index:1;}
+    .sbody{padding:7px 0 26px;flex:1;}
+    .sbody strong{display:block;font-size:.94rem;color:var(--text);margin-bottom:3px;}
+    .sbody p{font-size:.84rem;margin:0;}
+    code{font-family:monospace;background:var(--code-bg);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:.86em;color:var(--accent2);}
+    .warn{background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.3);border-radius:10px;padding:13px 17px;font-size:.86rem;color:#fdba74;display:flex;gap:9px;margin-top:14px;}
+    .tip{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25);border-radius:10px;padding:13px 17px;font-size:.86rem;color:#6ee7b7;display:flex;gap:9px;margin-top:14px;}
+    .code-block{background:var(--code-bg);border:1px solid var(--border);border-radius:10px;padding:17px 20px;margin-top:14px;overflow-x:auto;}
+    .code-block pre{font-family:monospace;font-size:.83rem;color:#c9d1d9;line-height:1.6;white-space:pre;}
+    .cm{color:#6272a4;} .str{color:#f1fa8c;} .var{color:#8be9fd;}
+    footer{text-align:center;padding:24px;border-top:1px solid var(--border);font-size:.77rem;color:var(--muted);}
+    @media(max-width:600px){.section{padding:20px 18px;}.folder-grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="index.html">⚗️ LCMS Pipeline</a>
+  <a href="guide.html" class="active">Guide</a>
+  <a href="functions.html">Functions</a>
+  <a href="columns.html">Columns</a>
+  <a href="checklist.html">Checklist</a>
+</nav>
+<div class="page-header">
+  <h1>Step-by-step Guide</h1>
+  <p>From folder creation to running the notebook</p>
+</div>
+<div class="container">
+
+  <div class="section">
+    <div class="sh"><div class="si ib">📁</div><h2>Step 1 — Create Four Folders<small>Required directory structure before running</small></h2></div>
+    <p>Create these four folders on your computer and set their paths as the four variables at the bottom of the notebook.</p>
+    <div class="folder-grid">
+      <div class="fc"><div class="lbl" style="color:var(--accent)">input_folder1</div><div class="nm">Positive/</div><p>First set of Excel files (e.g. positive-ion mode).</p></div>
+      <div class="fc"><div class="lbl" style="color:var(--accent2)">input_folder2</div><div class="nm">folder_2/</div><p>Second set of files. <strong style="color:var(--orange)">Must NOT start with N or n.</strong></p></div>
+      <div class="fc"><div class="lbl" style="color:var(--green)">merged_folder</div><div class="nm">Merged/</div><p>Intermediate combined files are stored here.</p></div>
+      <div class="fc"><div class="lbl" style="color:var(--orange)">final_folder</div><div class="nm">Finaloutput/</div><p>Final <code>_result.xlsx</code> outputs go here.</p></div>
+    </div>
+    <div class="warn"><span>⚠️</span><span><strong>Naming rule:</strong> The second input folder must not begin with <strong>N</strong> or <strong>n</strong>. Use <code>folder_2</code>, <code>Batch2</code>, or <code>pNegative</code> etc.</span></div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><div class="si io">📋</div><h2>Step 2 — Prepare Excel Files<small>Rules your spreadsheets must follow</small></h2></div>
+    <ul class="rules">
+      <li><span class="ri">🔤</span><div class="rb"><strong>Identical file names in both folders</strong><span>If <code>input_folder1</code> has <code>NONRESPONDER_SERUM.xlsx</code>, <code>input_folder2</code> must have the same name exactly. Unmatched files are skipped.</span></div></li>
+      <li><span class="ri">📊</span><div class="rb"><strong>Identical sheet names across both files</strong><span>Every sheet in file 1 must exist in file 2 with the same name (e.g. <code>N2.2FB</code>, <code>N22FB</code>…).</span></div></li>
+      <li><span class="ri">🏷️</span><div class="rb"><strong>Column headers: METABOLITE NAME &amp; AREA</strong><span>Every sheet must contain exactly these two columns. The script strips whitespace but names must otherwise match.</span></div></li>
+    </ul>
+    <div class="tip"><span>💡</span><span>Open each sheet and confirm the header row reads <code>METABOLITE NAME</code> | <code>AREA</code> before running.</span></div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><div class="si ig">⚙️</div><h2>Step 3 — How the Pipeline Runs<small>Three automatic stages per file pair</small></h2></div>
+    <div class="steps">
+      <div class="step"><div class="snum">1</div><div class="sbody"><strong>Merge — merge_sheets()</strong><p>Reads matching sheets from both files, aligns columns, stacks rows. Saves combined file to <code>merged_folder</code> as <code>filename_merged.xlsx</code>.</p></div></div>
+      <div class="step"><div class="snum">2</div><div class="sbody"><strong>Outlier Removal — duplicate_analysis()</strong><p>Computes Z-scores per metabolite across replicates. Drops measurements where |Z| ≥ 1.5. Single-replicate metabolites kept with Z = 0.</p></div></div>
+      <div class="step"><div class="snum">3</div><div class="sbody"><strong>Aggregate &amp; Save — process_excel_file()</strong><p>Groups by metabolite, computes mean area, count, and std. Writes final sheets to <code>final_folder</code> as <code>filename_result.xlsx</code>.</p></div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="sh"><div class="si ib">🛠️</div><h2>Step 4 — Configure the Script<small>Edit these four lines before running</small></h2></div>
+    <p>At the bottom of the notebook cell, update the path variables:</p>
+    <div class="code-block"><pre><span class="cm"># Update these four paths to match your system</span>
+<span class="var">input_folder1</span> = <span class="str">"C:/lcms/Positive"</span>      <span class="cm"># first set of .xlsx files</span>
+<span class="var">input_folder2</span> = <span class="str">"C:/lcms/folder_2"</span>      <span class="cm"># second set (no leading N/n!)</span>
+<span class="var">merged_folder</span> = <span class="str">"C:/lcms/Merged"</span>        <span class="cm"># intermediate merged files</span>
+<span class="var">final_folder</span>  = <span class="str">"C:/lcms/Finaloutput"</span>   <span class="cm"># final _result.xlsx outputs</span></pre></div>
+    <div class="tip"><span>💡</span><span>Use <strong>forward slashes</strong> <code>/</code> in all paths. The script converts backslashes but forward slashes are safer on all platforms.</span></div>
+  </div>
+
+</div>
+<footer>LCMS Metabolomics Pipeline · Author: Kartika · Python 3 · pandas · openpyxl · xlsxwriter</footer>
+</body>
+</html>
