@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LCMS Metabolite Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg:       #0b0e14;
+    --surface:  #12161f;
+    --card:     #181d29;
+    --border:   #252c3f;
+    --accent:   #00e5c3;
+    --accent2:  #7b61ff;
+    --warn:     #ff6b6b;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --success:  #22d3a0;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── Background mesh ─── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 10% 0%, rgba(0,229,195,.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 100%, rgba(123,97,255,.10) 0%, transparent 55%);
+    pointer-events: none;
+  }
+
+  /* ─── Grid lines overlay ─── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(0,229,195,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,195,.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ─── Header ─── */
+  header {
+    padding: 56px 0 48px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(120deg, var(--accent) 0%, #b8fef0 50%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p {
+    color: var(--muted);
+    font-size: .82rem;
+    letter-spacing: .05em;
+    margin-top: 4px;
+  }
+
+  /* ─── Pipeline steps strip ─── */
+  .pipeline {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 44px;
+    overflow-x: auto; padding-bottom: 4px;
+  }
+  .step {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    white-space: nowrap;
+    font-size: .75rem;
+    color: var(--muted);
+    transition: border-color .3s, color .3s;
+  }
+  .step.active { border-color: var(--accent); color: var(--accent); }
+  .step.done   { border-color: var(--success); color: var(--success); }
+  .step-num {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .65rem; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step.active .step-num { background: var(--accent); color: var(--bg); }
+  .step.done   .step-num { background: var(--success); color: var(--bg); }
+  .arrow { color: var(--border); font-size: 1rem; margin: 0 8px; flex-shrink: 0; }
+
+  /* ─── Cards ─── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    transition: border-color .3s;
+  }
+  .card:focus-within { border-color: var(--accent); }
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: .04em;
+    margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title span { font-family: 'DM Mono', monospace; font-size: .7rem; color: var(--muted); font-weight: 400; }
+
+  /* ─── Upload zones ─── */
+  .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  @media (max-width: 640px) { .upload-grid { grid-template-columns: 1fr; } }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .25s, background .25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,195,.05);
+  }
+  .drop-zone.loaded { border-color: var(--success); border-style: solid; }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 2;
+  }
+  .drop-icon { font-size: 2rem; margin-bottom: 10px; display: block; }
+  .drop-label {
+    font-family: 'Syne', sans-serif;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .drop-sub { font-size: .72rem; color: var(--border); }
+  .file-badge {
+    display: none;
+    margin-top: 12px;
+    background: rgba(0,229,195,.1);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: .72rem;
+    color: var(--accent);
+    word-break: break-all;
+  }
+  .drop-zone.loaded .file-badge { display: block; }
+
+  /* ─── Config ─── */
+  .config-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 640px) { .config-row { grid-template-columns: 1fr; } }
+  .field label {
+    display: block;
+    font-size: .72rem;
+    color: var(--muted);
+    letter-spacing: .06em;
+    margin-bottom: 8px;
+  }
+  .field input[type="number"] {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: .88rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .field input:focus { border-color: var(--accent); }
+
+  /* ─── Rules list ─── */
+  .rules {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: .76rem;
+    color: var(--muted);
+    line-height: 1.9;
+  }
+  .rules li { list-style: none; display: flex; align-items: flex-start; gap: 8px; }
+  .rules li::before { content: '⚡'; font-size: .65rem; margin-top: 3px; flex-shrink: 0; }
+
+  /* ─── Button ─── */
+  .btn-run {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    padding: 16px;
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    color: var(--bg);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: opacity .2s, transform .15s;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-run::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,.08);
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .btn-run:hover::after { opacity: 1; }
+  .btn-run:hover { transform: translateY(-1px); }
+  .btn-run:active { transform: translateY(1px); }
+  .btn-run:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  /* ─── Log ─── */
+  .log-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    height: 180px;
+    overflow-y: auto;
+    font-size: .74rem;
+    line-height: 1.8;
+    margin-bottom: 28px;
+    display: none;
+  }
+  .log-box.visible { display: block; }
+  .log-line { display: flex; gap: 10px; }
+  .log-line .ts { color: var(--muted); flex-shrink: 0; }
+  .log-line .msg { color: var(--text); }
+  .log-line.ok .msg  { color: var(--success); }
+  .log-line.err .msg { color: var(--warn); }
+  .log-line.info .msg{ color: var(--accent); }
+
+  /* ─── Results ─── */
+  .results-header {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 20px;
+    display: none;
+  }
+  .results-header.visible { display: block; }
+
+  .sheet-tabs {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+    display: none;
+  }
+  .sheet-tabs.visible { display: flex; }
+  .tab {
+    padding: 7px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: .76rem;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .tab.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,195,.08); }
+
+  .table-wrap {
+    overflow-x: auto;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+    display: none;
+  }
+  .table-wrap.visible { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  thead tr { background: var(--surface); }
+  th {
+    padding: 12px 16px;
+    text-align: left;
+    color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(37,44,63,.7);
+    color: var(--text);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(0,229,195,.03); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .metabolite { color: var(--accent2); }
+
+  /* ─── Download strip ─── */
+  .dl-strip { display: none; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
+  .dl-strip.visible { display: flex; }
+  .btn-dl {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 20px;
+    border-radius: 9px;
+    border: 1px solid var(--accent);
+    background: rgba(0,229,195,.08);
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    font-size: .78rem;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .btn-dl:hover { background: rgba(0,229,195,.15); }
+
+  /* ─── Summary stats ─── */
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 28px; display: none; }
+  .stats-row.visible { display: grid; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .stat-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-lbl { font-size: .68rem; color: var(--muted); letter-spacing: .05em; }
+
+  /* ─── Scroll bar ─── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* ─── Spinner ─── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(11,14,20,.4);
+    border-top-color: var(--bg);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+
+  /* ─── Fade in ─── */
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  .fade-up { animation: fadeUp .4s ease both; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ─── Header ─── -->
+  <header>
+    <div class="logo-row">
+      <div class="logo-icon">🧬</div>
+      <h1>LCMS Metabolite Analyzer</h1>
+    </div>
+    <p>UPLOAD · MERGE · DEDUPLICATE · EXPORT &nbsp;|&nbsp; Browser-native processing — no data leaves your machine</p>
+  </header>
+
+  <!-- ─── Pipeline strip ─── -->
+  <div class="pipeline" id="pipeline">
+    <div class="step active" id="s1"><div class="step-num">1</div>Upload Files</div>
+    <span class="arrow">→</span>
+    <div class="step" id="s2"><div class="step-num">2</div>Merge Sheets</div>
+    <span class="arrow">→</span>
+    <div class="step" id="s3"><div class="step-num">3</div>Z-Score Filter</div>
+    <span class="arrow">→</span>
+    <div class="step" id="s4"><div class="step-num">4</div>Mean Aggregation</div>
+    <span class="arrow">→</span>
+    <div class="step" id="s5"><div class="step-num">5</div>Export Results</div>
+  </div>
+
+  <!-- ─── Pre-flight rules ─── -->
+  <ul class="rules">
+    <li>Both Excel files must share the <strong>same sheet names</strong> (e.g. N2.2FB, N22FB …)</li>
+    <li>Each sheet must have columns named exactly <code>METABOLITE NAME</code> and <code>AREA</code></li>
+    <li>File 1 = Positive-mode runs &nbsp;·&nbsp; File 2 = Negative-mode runs (any name is fine)</li>
+    <li>Rows with invalid AREA values are automatically dropped before analysis</li>
+    <li>Z-score threshold below controls which duplicates are treated as outliers</li>
+  </ul>
+
+  <!-- ─── Upload ─── -->
+  <div class="card">
+    <div class="card-title">📂 Upload Excel Files <span>· .xlsx only</span></div>
+    <div class="upload-grid">
+
+      <div class="drop-zone" id="zone1">
+        <input type="file" accept=".xlsx" id="file1" />
+        <span class="drop-icon">📊</span>
+        <span class="drop-label">Positive-mode file</span>
+        <span class="drop-sub">Click or drag &amp; drop .xlsx</span>
+        <div class="file-badge" id="badge1">—</div>
+      </div>
+
+      <div class="drop-zone" id="zone2">
+        <input type="file" accept=".xlsx" id="file2" />
+        <span class="drop-icon">📊</span>
+        <span class="drop-label">Negative-mode file</span>
+        <span class="drop-sub">Click or drag &amp; drop .xlsx</span>
+        <div class="file-badge" id="badge2">—</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─── Config ─── -->
+  <div class="card">
+    <div class="card-title">⚙️ Analysis Parameters</div>
+    <div class="config-row">
+      <div class="field">
+        <label>Z-SCORE THRESHOLD (outlier cutoff)</label>
+        <input type="number" id="zThreshold" value="1.5" min="0.1" max="5" step="0.1" />
+      </div>
+      <div class="field">
+        <label>MINIMUM REPLICATES AFTER FILTER</label>
+        <input type="number" id="minRep" value="1" min="1" max="20" step="1" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Run button ─── -->
+  <button class="btn-run" id="btnRun" disabled>
+    <span id="btnIcon">▶</span>
+    <span id="btnTxt">RUN ANALYSIS</span>
+  </button>
+
+  <!-- ─── Log ─── -->
+  <div class="log-box" id="logBox"></div>
+
+  <!-- ─── Summary stats ─── -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card"><div class="stat-num" id="st0">—</div><div class="stat-lbl">SHEETS PROCESSED</div></div>
+    <div class="stat-card"><div class="stat-num" id="st1">—</div><div class="stat-lbl">TOTAL ROWS MERGED</div></div>
+    <div class="stat-card"><div class="stat-num" id="st2">—</div><div class="stat-lbl">OUTLIERS REMOVED</div></div>
+    <div class="stat-card"><div class="stat-num" id="st3">—</div><div class="stat-lbl">METABOLITES RETAINED</div></div>
+  </div>
+
+  <!-- ─── Results ─── -->
+  <div class="results-header" id="resHdr">📋 Results per Sheet</div>
+  <div class="sheet-tabs" id="sheetTabs"></div>
+  <div class="table-wrap" id="tableWrap"><table id="dataTable"><thead></thead><tbody></tbody></table></div>
+
+  <!-- ─── Download ─── -->
+  <div class="dl-strip" id="dlStrip">
+    <button class="btn-dl" id="btnDlAll">⬇ Download Merged Result (.xlsx)</button>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+/* ══════════════════════════════════════════════════════
+   State
+══════════════════════════════════════════════════════ */
+let wb1 = null, wb2 = null;
+let results = {};   // { sheetName: DataFrame[] }
+let stats = { sheets:0, merged:0, outliers:0, kept:0 };
+
+/* ══════════════════════════════════════════════════════
+   Utilities
+══════════════════════════════════════════════════════ */
+function ts() {
+  const d = new Date();
+  return d.toTimeString().slice(0,8);
+}
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  box.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  line.innerHTML = `<span class="ts">[${ts()}]</span><span class="msg">${msg}</span>`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+function stepDone(n)   { const el = document.getElementById('s'+n); el.classList.remove('active'); el.classList.add('done'); }
+function stepActive(n) { const el = document.getElementById('s'+n); el.classList.add('active'); }
+
+function readWorkbook(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type:'array' });
+        resolve(wb);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   File drop / pick
+══════════════════════════════════════════════════════ */
+function setupZone(zoneId, fileId, badgeId, slot) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(fileId);
+  const badge = document.getElementById(badgeId);
+
+  async function load(file) {
+    if (!file || !file.name.endsWith('.xlsx')) { log('Only .xlsx files are accepted.', 'err'); return; }
+    badge.textContent = file.name;
+    zone.classList.add('loaded');
+    if (slot === 1) wb1 = await readWorkbook(file);
+    else            wb2 = await readWorkbook(file);
+    log(`Loaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'ok');
+    checkReady();
+  }
+
+  input.addEventListener('change', () => load(input.files[0]));
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    load(e.dataTransfer.files[0]);
+  });
+}
+
+function checkReady() {
+  document.getElementById('btnRun').disabled = !(wb1 && wb2);
+}
+
+setupZone('zone1','file1','badge1',1);
+setupZone('zone2','file2','badge2',2);
+
+/* ══════════════════════════════════════════════════════
+   Core Analysis
+══════════════════════════════════════════════════════ */
+function sheetToRows(wb, sheetName) {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return null;
+  const raw = XLSX.utils.sheet_to_json(ws, { defval:'' });
+  // Normalise column names
+  return raw.map(r => {
+    const out = {};
+    for (const k of Object.keys(r)) out[k.trim()] = r[k];
+    return out;
+  });
+}
+
+function toNum(v) {
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v).replace(/,/g,''));
+  return isNaN(n) ? NaN : n;
+}
+
+function mergeRows(rows1, rows2) {
+  return [...rows1, ...rows2];
+}
+
+function duplicateAnalysis(rows, zThresh, minRep) {
+  // Validate columns
+  const sample = rows[0] || {};
+  if (!('METABOLITE NAME' in sample) || !('AREA' in sample)) {
+    return { error: 'Missing METABOLITE NAME or AREA column' };
+  }
+
+  // Capitalise + parse area
+  let df = rows.map(r => ({
+    name: String(r['METABOLITE NAME'] || '').trim(),
+    area: toNum(r['AREA'])
+  })).filter(r => r.name && !isNaN(r.area));
+
+  const totalIn = df.length;
+
+  // Group by name
+  const groups = {};
+  for (const r of df) {
+    if (!groups[r.name]) groups[r.name] = [];
+    groups[r.name].push(r.area);
+  }
+
+  // z-score filter per group
+  const finalRows = [];
+  let outlierCount = 0;
+
+  for (const [name, areas] of Object.entries(groups)) {
+    const n = areas.length;
+    const mean = areas.reduce((a,b)=>a+b,0)/n;
+    let std = 0;
+    if (n > 1) {
+      const variance = areas.reduce((s,v)=>s+(v-mean)**2,0)/(n-1);
+      std = Math.sqrt(variance);
+    }
+
+    const kept = [];
+    for (const a of areas) {
+      const z = std > 0 ? (a - mean) / std : 0;
+      if (Math.abs(z) < zThresh) kept.push({ z, a });
+      else outlierCount++;
+    }
+
+    if (kept.length < minRep) continue;
+
+    const keptAreas = kept.map(x=>x.a);
+    const kMean  = keptAreas.reduce((a,b)=>a+b,0)/keptAreas.length;
+    let kStd = 0;
+    if (keptAreas.length > 1) {
+      const v = keptAreas.reduce((s,v)=>s+(v-kMean)**2,0)/(keptAreas.length-1);
+      kStd = Math.sqrt(v);
+    }
+
+    finalRows.push({
+      'METABOLITE NAME': name,
+      'Area (Mean)': kMean,
+      'Std Dev': kStd,
+      'N (kept)': keptAreas.length,
+      'N (total)': n,
+      'Outliers Removed': n - keptAreas.length,
+      'Z-Scores': kept.map(x=>x.z.toFixed(3)).join(', ')
+    });
+  }
+
+  finalRows.sort((a,b) => a['METABOLITE NAME'].localeCompare(b['METABOLITE NAME']));
+  return { rows: finalRows, outliers: outlierCount, totalIn };
+}
+
+/* ══════════════════════════════════════════════════════
+   Run
+══════════════════════════════════════════════════════ */
+document.getElementById('btnRun').addEventListener('click', async () => {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = true;
+  document.getElementById('btnIcon').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('btnTxt').textContent = 'PROCESSING…';
+
+  const logBox = document.getElementById('logBox');
+  logBox.innerHTML = '';
+
+  results = {};
+  stats = { sheets:0, merged:0, outliers:0, kept:0 };
+
+  const zThresh = parseFloat(document.getElementById('zThreshold').value) || 1.5;
+  const minRep  = parseInt(document.getElementById('minRep').value)       || 1;
+
+  log('Starting analysis…', 'info');
+  stepActive(2);
+
+  // Validate sheet names match
+  const sheets1 = wb1.SheetNames;
+  const sheets2 = wb2.SheetNames;
+  const commonSheets = sheets1.filter(s => sheets2.includes(s));
+  const missing = sheets1.filter(s => !sheets2.includes(s));
+
+  if (missing.length) {
+    log(`Warning: sheets not found in file 2 and skipped → ${missing.join(', ')}`, 'err');
+  }
+  if (!commonSheets.length) {
+    log('No common sheets found between files. Aborting.', 'err');
+    resetBtn(); return;
+  }
+
+  log(`Common sheets: ${commonSheets.join(', ')}`, 'ok');
+
+  await new Promise(r => setTimeout(r, 30)); // yield for UI
+
+  for (const sheet of commonSheets) {
+    log(`— Sheet: ${sheet}`, 'info');
+
+    const rows1 = sheetToRows(wb1, sheet);
+    const rows2 = sheetToRows(wb2, sheet);
+
+    if (!rows1 || !rows2) { log(`  ✗ Could not read sheet "${sheet}"`, 'err'); continue; }
+
+    stepDone(2); stepActive(3);
+
+    const merged = mergeRows(rows1, rows2);
+    log(`  Merged: ${rows1.length} + ${rows2.length} = ${merged.length} rows`);
+    stats.merged += merged.length;
+
+    await new Promise(r => setTimeout(r, 10));
+
+    const res = duplicateAnalysis(merged, zThresh, minRep);
+
+    if (res.error) { log(`  ✗ ${res.error}`, 'err'); continue; }
+
+    log(`  Outliers removed: ${res.outliers}`, res.outliers > 0 ? '' : 'ok');
+    log(`  Metabolites retained: ${res.rows.length}`, 'ok');
+
+    stepDone(3); stepActive(4);
+
+    results[sheet] = res.rows;
+    stats.sheets++;
+    stats.outliers += res.outliers;
+    stats.kept += res.rows.length;
+
+    await new Promise(r => setTimeout(r, 10));
+    stepDone(4); stepActive(5);
+  }
+
+  log('Analysis complete!', 'ok');
+
+  // Update stats
+  document.getElementById('st0').textContent = stats.sheets;
+  document.getElementById('st1').textContent = stats.merged.toLocaleString();
+  document.getElementById('st2').textContent = stats.outliers.toLocaleString();
+  document.getElementById('st3').textContent = stats.kept.toLocaleString();
+  document.getElementById('statsRow').classList.add('visible','fade-up');
+
+  // Build tabs + table
+  buildResultsUI(commonSheets.filter(s => results[s]));
+
+  // Show download
+  document.getElementById('dlStrip').classList.add('visible','fade-up');
+  document.getElementById('resHdr').classList.add('visible','fade-up');
+
+  stepDone(5);
+
+  btn.disabled = false;
+  document.getElementById('btnIcon').textContent = '✓';
+  document.getElementById('btnTxt').textContent  = 'ANALYSIS COMPLETE — RUN AGAIN?';
+});
+
+function resetBtn() {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = false;
+  document.getElementById('btnIcon').textContent = '▶';
+  document.getElementById('btnTxt').textContent  = 'RUN ANALYSIS';
+}
+
+/* ══════════════════════════════════════════════════════
+   Results UI
+══════════════════════════════════════════════════════ */
+function buildResultsUI(sheets) {
+  const tabs = document.getElementById('sheetTabs');
+  const wrap = document.getElementById('tableWrap');
+  tabs.innerHTML = '';
+  tabs.classList.add('visible');
+  wrap.classList.add('visible','fade-up');
+
+  sheets.forEach((s, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (i===0 ? ' active' : '');
+    tab.textContent = s;
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      renderTable(s);
+    });
+    tabs.appendChild(tab);
+  });
+
+  if (sheets.length) renderTable(sheets[0]);
+}
+
+function renderTable(sheet) {
+  const rows = results[sheet] || [];
+  const thead = document.querySelector('#dataTable thead');
+  const tbody = document.querySelector('#dataTable tbody');
+
+  const cols = ['METABOLITE NAME','Area (Mean)','Std Dev','N (kept)','N (total)','Outliers Removed'];
+  const numCols = new Set(['Area (Mean)','Std Dev','N (kept)','N (total)','Outliers Removed']);
+
+  thead.innerHTML = `<tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>`;
+  tbody.innerHTML = rows.map(r =>
+    `<tr>${cols.map(c => {
+      const v = r[c];
+      const isNum = numCols.has(c);
+      const formatted = isNum
+        ? (typeof v === 'number' ? (c.includes('N') ? v : v.toExponential(3)) : v)
+        : v;
+      return `<td class="${isNum?'num':'metabolite'}">${formatted}</td>`;
+    }).join('')}</tr>`
+  ).join('');
+}
+
+/* ══════════════════════════════════════════════════════
+   Download
+══════════════════════════════════════════════════════ */
+document.getElementById('btnDlAll').addEventListener('click', () => {
+  const wb = XLSX.utils.book_new();
+  for (const [sheet, rows] of Object.entries(results)) {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0,31));
+  }
+  XLSX.writeFile(wb, 'LCMS_analysis_result.xlsx');
+});
+</script>
+</body>
+</html>

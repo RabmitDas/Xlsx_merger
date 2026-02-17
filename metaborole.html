@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Metaborole — Metabolite Annotator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --ink:      #1a1a2e;
+  --paper:    #f5f0e8;
+  --cream:    #ede8dc;
+  --warm:     #d4c5a9;
+  --accent:   #c0392b;
+  --accent2:  #2980b9;
+  --gold:     #b8860b;
+  --success:  #27ae60;
+  --muted:    #7a7060;
+  --border:   #ccc3b0;
+  --card:     #faf6ef;
+  --shadow:   rgba(26,26,46,0.12);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  position: relative;
+}
+
+/* ── Noise texture overlay ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  opacity: .035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px;
+  pointer-events: none;
+}
+
+/* ── Ruled lines on paper ── */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 27px,
+    rgba(180,160,120,.18) 28px
+  );
+  background-size: 100% 28px;
+  pointer-events: none;
+}
+
+.wrap {
+  position: relative; z-index: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 28px 80px;
+}
+
+/* ── Header ── */
+header {
+  padding: 52px 0 36px;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 44px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: 'Fraunces', serif;
+}
+.brand h1 {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+.brand h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+.brand p {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .72rem;
+  color: var(--muted);
+  letter-spacing: .08em;
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+.db-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.db-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .7rem;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--warm);
+  flex-shrink: 0;
+  transition: background .4s;
+}
+.dot.loading { background: var(--gold); animation: pulse 1s ease-in-out infinite; }
+.dot.ok      { background: var(--success); }
+.dot.err     { background: var(--accent); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── Section labels ── */
+.section-label {
+  font-size: .65rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  padding: 28px 30px;
+  margin-bottom: 20px;
+  box-shadow: 3px 3px 0 var(--warm);
+}
+
+/* ── Upload zone ── */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  padding: 44px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  position: relative;
+  overflow: hidden;
+  background: rgba(255,255,255,.5);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(192,57,43,.04);
+}
+.drop-zone.loaded {
+  border-style: solid;
+  border-color: var(--success);
+  background: rgba(39,174,96,.04);
+}
+.drop-zone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 2;
+}
+.drop-icon {
+  font-size: 2.2rem;
+  margin-bottom: 12px;
+  display: block;
+  filter: grayscale(0.3);
+}
+.drop-label {
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--ink);
+  display: block;
+  margin-bottom: 4px;
+}
+.drop-sub {
+  font-size: .72rem;
+  color: var(--muted);
+}
+.file-info {
+  display: none;
+  margin-top: 14px;
+  padding: 8px 14px;
+  background: rgba(39,174,96,.1);
+  border: 1px solid var(--success);
+  border-radius: 3px;
+  font-size: .72rem;
+  color: #1a6b40;
+}
+.drop-zone.loaded .file-info { display: block; }
+
+/* ── DB load progress ── */
+.db-progress {
+  margin-top: 18px;
+  display: none;
+}
+.db-progress.visible { display: block; }
+.progress-bar-wrap {
+  height: 4px;
+  background: var(--warm);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  width: 0%;
+  transition: width .3s ease;
+  border-radius: 2px;
+}
+.progress-label {
+  font-size: .68rem;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+/* ── Options ── */
+.options-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .78rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-wrap input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Run button ── */
+.btn-run {
+  width: 100%;
+  padding: 16px;
+  font-family: 'Fraunces', serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: .02em;
+  background: var(--ink);
+  color: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .2s, color .2s, transform .1s;
+  margin-bottom: 24px;
+  box-shadow: 3px 3px 0 var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.btn-run:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.btn-run:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--accent);
+}
+.btn-run:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 3px 3px 0 var(--warm);
+}
+
+/* ── Log ── */
+.log-box {
+  background: var(--ink);
+  border: 1.5px solid var(--ink);
+  border-radius: 4px;
+  padding: 16px 18px;
+  height: 160px;
+  overflow-y: auto;
+  font-size: .72rem;
+  line-height: 1.9;
+  margin-bottom: 24px;
+  display: none;
+}
+.log-box.visible { display: block; }
+.log-line { display: flex; gap: 10px; }
+.log-line .ts  { color: #5a7a6a; flex-shrink: 0; }
+.log-line .msg { color: #c8d8c0; }
+.log-line.ok   .msg { color: #5dbb8a; }
+.log-line.err  .msg { color: #e07070; }
+.log-line.info .msg { color: #7ab8e0; }
+.log-line.warn .msg { color: #d4a855; }
+
+/* ── Stats ── */
+.stats-row {
+  display: none;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.stats-row.visible { display: grid; }
+.stat-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  padding: 16px 18px;
+  box-shadow: 2px 2px 0 var(--warm);
+  text-align: center;
+}
+.stat-num {
+  font-family: 'Fraunces', serif;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+  margin-bottom: 5px;
+}
+.stat-pct {
+  font-size: .7rem;
+  color: var(--accent2);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 2px;
+}
+.stat-lbl {
+  font-size: .64rem;
+  color: var(--muted);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* ── Table ── */
+.results-header {
+  font-family: 'Fraunces', serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 14px;
+  display: none;
+  align-items: baseline;
+  gap: 12px;
+}
+.results-header.visible { display: flex; }
+.results-header small {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .68rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.table-outer {
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: 2px 2px 0 var(--warm);
+  display: none;
+}
+.table-outer.visible { display: block; }
+
+.table-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--cream);
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.search-input {
+  flex: 1;
+  min-width: 160px;
+  max-width: 300px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 7px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .74rem;
+  color: var(--ink);
+  outline: none;
+}
+.search-input:focus { border-color: var(--accent2); }
+.filter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 5px 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .68rem;
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .03em;
+}
+.filter-btn:hover { border-color: var(--ink); color: var(--ink); }
+.filter-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.table-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+thead { position: sticky; top: 0; z-index: 2; }
+thead tr { background: var(--cream); }
+th {
+  padding: 11px 14px;
+  text-align: left;
+  font-size: .65rem;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1.5px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(180,160,120,.3);
+  color: var(--ink);
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(180,160,120,.1); }
+
+/* Column colour coding */
+td.col-name  { font-weight: 500; }
+td.col-kegg  { color: #1a5276; }
+td.col-hmdb  { color: #1a6b40; }
+td.col-src   { color: var(--muted); font-size: .68rem; }
+td.not-found { color: var(--warm); font-style: italic; }
+td.found     { }
+
+/* ── Download ── */
+.dl-strip {
+  display: none;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+}
+.dl-strip.visible { display: flex; }
+.btn-dl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 4px;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Fraunces', serif;
+  font-size: .9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+  box-shadow: 2px 2px 0 var(--warm);
+}
+.btn-dl:hover {
+  background: var(--ink);
+  color: var(--paper);
+  transform: translate(-1px,-1px);
+  box-shadow: 3px 3px 0 var(--accent2);
+}
+
+/* ── Spinner ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(245,240,232,.3);
+  border-top-color: var(--paper);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.fade-up { animation: fadeUp .35s ease both; }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--cream); }
+::-webkit-scrollbar-thumb { background: var(--warm); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ── Header ── -->
+<header>
+  <div class="brand">
+    <h1>Meta<em>borole</em></h1>
+    <p>Metabolite Annotator · KEGG + HMDB · GitHub Pages</p>
+  </div>
+  <div class="db-status">
+    <div class="db-badge"><div class="dot" id="dotKegg"></div><span id="lblKegg">KEGG — waiting</span></div>
+    <div class="db-badge"><div class="dot" id="dotHmdb"></div><span id="lblHmdb">HMDB — waiting</span></div>
+  </div>
+</header>
+
+<!-- ── DB load card ── -->
+<div class="card" id="dbCard">
+  <div class="section-label">Step 1 — Load Databases</div>
+  <p style="font-size:.8rem;color:var(--muted);line-height:1.7;margin-bottom:14px;">
+    Databases are fetched from this repository. Click <strong>Load Databases</strong> once —
+    they stay cached in memory for the session. Each file may be several MB.
+  </p>
+  <button class="btn-run" id="btnLoadDb" style="margin-bottom:0">
+    <span id="dbBtnIcon">⬇</span>
+    <span id="dbBtnTxt">Load Databases from Repo</span>
+  </button>
+  <div class="db-progress" id="dbProgress">
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-label" id="progressLabel"></div>
+  </div>
+</div>
+
+<!-- ── Upload card ── -->
+<div class="card">
+  <div class="section-label">Step 2 — Upload Metabolite File</div>
+  <div class="drop-zone" id="dropZone">
+    <input type="file" accept=".csv,.xlsx,.xls" id="metFile"/>
+    <span class="drop-icon">📄</span>
+    <span class="drop-label">Drop your CSV or Excel file here</span>
+    <span class="drop-sub">First column must contain metabolite names</span>
+    <div class="file-info" id="fileInfo">—</div>
+  </div>
+  <div class="options-row">
+    <label class="toggle-wrap">
+      <input type="checkbox" id="dedupChk" checked/>
+      Skip duplicate metabolite names
+    </label>
+  </div>
+</div>
+
+<!-- ── Run ── -->
+<button class="btn-run" id="btnRun" disabled>
+  <span id="runIcon">▶</span>
+  <span id="runTxt">Annotate Metabolites</span>
+</button>
+
+<!-- ── Log ── -->
+<div class="log-box" id="logBox"></div>
+
+<!-- ── Stats ── -->
+<div class="stats-row" id="statsRow">
+  <div class="stat-card"><div class="stat-num" id="st0">—</div><div class="stat-lbl">Total</div></div>
+  <div class="stat-card"><div class="stat-num" id="st1">—</div><span class="stat-pct" id="pct1"></span><div class="stat-lbl">KEGG Found</div></div>
+  <div class="stat-card"><div class="stat-num" id="st2">—</div><span class="stat-pct" id="pct2"></span><div class="stat-lbl">HMDB Found</div></div>
+  <div class="stat-card"><div class="stat-num" id="st3">—</div><span class="stat-pct" id="pct3"></span><div class="stat-lbl">Both Found</div></div>
+  <div class="stat-card"><div class="stat-num" id="st4">—</div><span class="stat-pct" id="pct4"></span><div class="stat-lbl">Neither Found</div></div>
+</div>
+
+<!-- ── Results ── -->
+<div class="results-header" id="resHdr">
+  Annotation Results <small id="resCount"></small>
+</div>
+<div class="table-outer" id="tableOuter">
+  <div class="table-controls">
+    <input class="search-input" id="searchInput" placeholder="Search metabolite…" />
+    <div class="filter-btns">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="kegg">KEGG ✓</button>
+      <button class="filter-btn" data-filter="hmdb">HMDB ✓</button>
+      <button class="filter-btn" data-filter="both">Both ✓</button>
+      <button class="filter-btn" data-filter="none">Neither</button>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table id="dataTable"><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
+  </div>
+</div>
+
+<!-- ── Download ── -->
+<div class="dl-strip" id="dlStrip">
+  <button class="btn-dl" id="btnDl">⬇ Download Annotated Excel</button>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+/* ════════════════════════════════════════════════════════
+   CONFIG — set these to match your GitHub repo paths
+════════════════════════════════════════════════════════ */
+const DB_BASE = './db/';          // path inside the repo
+const KEGG_URL = DB_BASE + 'kegg_name_to_id.json';
+const HMDB_URL = DB_BASE + 'hmdb_name_to_id.json';
+/* ════════════════════════════════════════════════════════ */
+
+/* ── State ── */
+let keggDB = null;   // { "name": "C00001", ... }
+let hmdbDB = null;   // { "name": ["HMDB0000001", ...], ... }
+let uploadedFile = null;
+let originalRows = [];
+let annotatedRows = [];
+let allAnnotations = [];
+
+/* ── Logging ── */
+function ts() { return new Date().toTimeString().slice(0,8); }
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  box.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = 'log-line ' + type;
+  d.innerHTML = `<span class="ts">[${ts()}]</span><span class="msg">${msg}</span>`;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setDot(id, state, label) {
+  const dot = document.getElementById('dot' + id);
+  const lbl = document.getElementById('lbl' + id);
+  dot.className = 'dot ' + state;
+  lbl.textContent = label;
+}
+function setProgress(pct, label) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+/* ── DB Loading ── */
+document.getElementById('btnLoadDb').addEventListener('click', loadDatabases);
+
+async function loadDatabases() {
+  const btn = document.getElementById('btnLoadDb');
+  btn.disabled = true;
+  document.getElementById('dbBtnIcon').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('dbBtnTxt').textContent = 'Loading…';
+  document.getElementById('dbProgress').classList.add('visible');
+
+  log('Fetching databases from repository…', 'info');
+
+  try {
+    // KEGG
+    setDot('Kegg', 'loading', 'KEGG — loading…');
+    setProgress(10, 'Fetching KEGG JSON…');
+    const keggRes = await fetch(KEGG_URL);
+    if (!keggRes.ok) throw new Error(`KEGG fetch failed: ${keggRes.status} ${keggRes.statusText}`);
+    keggDB = await keggRes.json();
+    const keggCount = Object.keys(keggDB).length;
+    setDot('Kegg', 'ok', `KEGG — ${keggCount.toLocaleString()} entries`);
+    setProgress(55, `KEGG loaded (${keggCount.toLocaleString()} entries). Fetching HMDB…`);
+    log(`KEGG DB loaded: ${keggCount.toLocaleString()} entries`, 'ok');
+
+    // HMDB
+    setDot('Hmdb', 'loading', 'HMDB — loading…');
+    const hmdbRes = await fetch(HMDB_URL);
+    if (!hmdbRes.ok) throw new Error(`HMDB fetch failed: ${hmdbRes.status} ${hmdbRes.statusText}`);
+    hmdbDB = await hmdbRes.json();
+    const hmdbCount = Object.keys(hmdbDB).length;
+    setDot('Hmdb', 'ok', `HMDB — ${hmdbCount.toLocaleString()} entries`);
+    setProgress(100, `All databases loaded.`);
+    log(`HMDB DB loaded: ${hmdbCount.toLocaleString()} entries`, 'ok');
+    log('Databases ready. Upload your metabolite file to continue.', 'info');
+
+    document.getElementById('dbBtnIcon').textContent = '✓';
+    document.getElementById('dbBtnTxt').textContent = 'Databases Loaded';
+    checkReady();
+
+  } catch(err) {
+    log('ERROR: ' + err.message, 'err');
+    log('Check that db/kegg_name_to_id.json and db/hmdb_name_to_id.json exist in the repo.', 'warn');
+    setDot('Kegg', 'err', 'KEGG — error');
+    setDot('Hmdb', 'err', 'HMDB — error');
+    btn.disabled = false;
+    document.getElementById('dbBtnIcon').textContent = '↺';
+    document.getElementById('dbBtnTxt').textContent = 'Retry Load';
+  }
+}
+
+/* ── File Upload ── */
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('metFile');
+
+async function loadMetFile(file) {
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['csv','xlsx','xls'].includes(ext)) {
+    log('Only CSV and Excel (.xlsx/.xls) files are accepted.', 'err'); return;
+  }
+  uploadedFile = file;
+  document.getElementById('fileInfo').textContent =
+    `${file.name}  ·  ${(file.size/1024).toFixed(1)} KB`;
+  dropZone.classList.add('loaded');
+  log(`File ready: ${file.name}`, 'ok');
+  checkReady();
+}
+
+fileInput.addEventListener('change', () => loadMetFile(fileInput.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  loadMetFile(e.dataTransfer.files[0]);
+});
+
+function checkReady() {
+  document.getElementById('btnRun').disabled = !(keggDB && hmdbDB && uploadedFile);
+}
+
+/* ════════════════════════════════════════════════════
+   ANNOTATION LOGIC (mirrors annotator.py exactly)
+════════════════════════════════════════════════════ */
+
+function extractKeggFromText(text) {
+  if (!text) return null;
+  let m = text.match(/\bC\d{5}\b/i);
+  if (m) return m[0].toUpperCase();
+  m = text.match(/cpd:(C\d{5})/i);
+  if (m) return m[1].toUpperCase();
+  return null;
+}
+
+function removeStereoPrefix(s) {
+  if (!s) return '';
+  return s.replace(/^(?:dl|d|l)[-\s]+/i, '').trim();
+}
+
+function lookupKegg(original) {
+  const key = original.toLowerCase().trim();
+
+  // 1) KEGG ID already in the string
+  const inText = extractKeggFromText(original);
+  if (inText) return { 'KEGG ID': inText, 'KEGG Match Source': 'in_name', 'KEGG Matched Query': inText };
+
+  // 2) Exact
+  if (keggDB[key]) return { 'KEGG ID': keggDB[key], 'KEGG Match Source': 'exact', 'KEGG Matched Query': key };
+
+  // 3) Stereo-prefix removed
+  const key2 = removeStereoPrefix(key);
+  if (key2 && key2 !== key && keggDB[key2])
+    return { 'KEGG ID': keggDB[key2], 'KEGG Match Source': 'stereo_prefix_removed', 'KEGG Matched Query': key2 };
+
+  return { 'KEGG ID': 'Not Found', 'KEGG Match Source': 'not_found', 'KEGG Matched Query': key };
+}
+
+function lookupHmdb(original) {
+  const key = original.toLowerCase().trim();
+
+  // 1) Exact
+  if (hmdbDB[key]) return { 'HMDB IDs': hmdbDB[key].join('; '), 'HMDB Match Source': 'exact' };
+
+  // 2) Stereo-prefix removed
+  const key2 = removeStereoPrefix(key);
+  if (key2 && key2 !== key && hmdbDB[key2])
+    return { 'HMDB IDs': hmdbDB[key2].join('; '), 'HMDB Match Source': 'stereo_prefix_removed' };
+
+  return { 'HMDB IDs': 'Not Found', 'HMDB Match Source': 'not_found' };
+}
+
+function annotateAll(names, deduplicate) {
+  const results = [];
+  const seen = new Set();
+  for (const original of names) {
+    const key = String(original || '').toLowerCase().trim();
+    if (deduplicate) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    const kegg = lookupKegg(String(original || ''));
+    const hmdb = lookupHmdb(String(original || ''));
+    results.push({ 'Original Name': original, ...kegg, ...hmdb });
+  }
+  return results;
+}
+
+/* ════════════════════════════════════════════════════
+   READ FILE (CSV / Excel)
+════════════════════════════════════════════════════ */
+function readFileAsRows(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = e.target.result;
+        const ext = file.name.split('.').pop().toLowerCase();
+        let rows;
+        if (ext === 'csv') {
+          const text = new TextDecoder().decode(data);
+          const wb = XLSX.read(text, { type: 'string' });
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        } else {
+          const wb = XLSX.read(data, { type: 'array' });
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        }
+        resolve(rows);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ════════════════════════════════════════════════════
+   RUN
+════════════════════════════════════════════════════ */
+document.getElementById('btnRun').addEventListener('click', async () => {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = true;
+  document.getElementById('runIcon').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('runTxt').textContent = 'Annotating…';
+  document.getElementById('logBox').innerHTML = '';
+  document.getElementById('logBox').classList.add('visible');
+
+  const deduplicate = document.getElementById('dedupChk').checked;
+
+  try {
+    log('Reading metabolite file…', 'info');
+    originalRows = await readFileAsRows(uploadedFile);
+    if (!originalRows.length) throw new Error('File is empty or unreadable.');
+
+    const firstCol = Object.keys(originalRows[0])[0];
+    const names = originalRows.map(r => r[firstCol]).filter(n => n !== '' && n !== null && n !== undefined);
+    log(`Found ${names.length} names in column "${firstCol}"`, 'ok');
+
+    await new Promise(r => setTimeout(r, 20));
+    log(`Annotating ${deduplicate ? '(deduplicating) ' : ''}against KEGG + HMDB…`, 'info');
+
+    // Process in chunks so UI doesn't freeze
+    allAnnotations = [];
+    const CHUNK = 200;
+    for (let i = 0; i < names.length; i += CHUNK) {
+      const chunk = names.slice(i, i + CHUNK);
+      allAnnotations.push(...annotateAll(chunk, false)); // dedup handled below if needed
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Deduplicate full list if requested
+    if (deduplicate) {
+      const seen = new Set();
+      allAnnotations = allAnnotations.filter(r => {
+        const k = String(r['Original Name'] || '').toLowerCase().trim();
+        if (seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+    }
+
+    log(`Annotation complete — ${allAnnotations.length} unique metabolites`, 'ok');
+
+    /* Build annotated output rows: insert HMDB col 2, KEGG col 3 after original col 1 */
+    const allOrigCols = Object.keys(originalRows[0]);
+    const firstColName = allOrigCols[0];
+    const restCols = allOrigCols.slice(1);
+
+    // Build lookup map from annotation results
+    const annotMap = {};
+    for (const a of allAnnotations) {
+      const k = String(a['Original Name'] || '').toLowerCase().trim();
+      annotMap[k] = a;
+    }
+
+    annotatedRows = originalRows.map(row => {
+      const nameVal = row[firstColName];
+      const k = String(nameVal || '').toLowerCase().trim();
+      const ann = annotMap[k] || { 'HMDB IDs': 'Not Found', 'HMDB Match Source': 'not_found', 'KEGG ID': 'Not Found', 'KEGG Match Source': 'not_found', 'KEGG Matched Query': k };
+      const out = {};
+      out[firstColName]          = nameVal;
+      out['HMDB IDs']            = ann['HMDB IDs'];
+      out['HMDB Match Source']   = ann['HMDB Match Source'];
+      out['KEGG ID']             = ann['KEGG ID'];
+      out['KEGG Match Source']   = ann['KEGG Match Source'];
+      out['KEGG Matched Query']  = ann['KEGG Matched Query'];
+      for (const c of restCols) out[c] = row[c];
+      return out;
+    });
+
+    // Stats
+    const n = allAnnotations.length;
+    const nKegg = allAnnotations.filter(r => r['KEGG ID'] !== 'Not Found').length;
+    const nHmdb = allAnnotations.filter(r => r['HMDB IDs'] !== 'Not Found').length;
+    const nBoth = allAnnotations.filter(r => r['KEGG ID'] !== 'Not Found' && r['HMDB IDs'] !== 'Not Found').length;
+    const nNone = allAnnotations.filter(r => r['KEGG ID'] === 'Not Found' && r['HMDB IDs'] === 'Not Found').length;
+
+    const pct = v => n ? `${(v/n*100).toFixed(0)}%` : '—';
+    document.getElementById('st0').textContent = n;
+    document.getElementById('st1').textContent = nKegg; document.getElementById('pct1').textContent = pct(nKegg);
+    document.getElementById('st2').textContent = nHmdb; document.getElementById('pct2').textContent = pct(nHmdb);
+    document.getElementById('st3').textContent = nBoth; document.getElementById('pct3').textContent = pct(nBoth);
+    document.getElementById('st4').textContent = nNone; document.getElementById('pct4').textContent = pct(nNone);
+    document.getElementById('statsRow').classList.add('visible','fade-up');
+
+    if (nNone > 0) log(`${nNone} metabolite(s) not found in either database.`, 'warn');
+
+    buildTable(allAnnotations);
+
+    document.getElementById('resHdr').classList.add('visible','fade-up');
+    document.getElementById('resCount').textContent = `${n} rows`;
+    document.getElementById('tableOuter').classList.add('visible','fade-up');
+    document.getElementById('dlStrip').classList.add('visible','fade-up');
+
+    btn.disabled = false;
+    document.getElementById('runIcon').textContent = '✓';
+    document.getElementById('runTxt').textContent = 'Done — Run Again?';
+
+  } catch(err) {
+    log('ERROR: ' + err.message, 'err');
+    btn.disabled = false;
+    document.getElementById('runIcon').textContent = '▶';
+    document.getElementById('runTxt').textContent = 'Annotate Metabolites';
+  }
+});
+
+/* ════════════════════════════════════════════════════
+   TABLE
+════════════════════════════════════════════════════ */
+let currentFilter = 'all';
+let currentSearch = '';
+
+function buildTable(data) {
+  renderTable(filterData(data));
+}
+
+function filterData(data) {
+  let d = data;
+  if (currentFilter === 'kegg') d = d.filter(r => r['KEGG ID'] !== 'Not Found');
+  if (currentFilter === 'hmdb') d = d.filter(r => r['HMDB IDs'] !== 'Not Found');
+  if (currentFilter === 'both') d = d.filter(r => r['KEGG ID'] !== 'Not Found' && r['HMDB IDs'] !== 'Not Found');
+  if (currentFilter === 'none') d = d.filter(r => r['KEGG ID'] === 'Not Found' && r['HMDB IDs'] === 'Not Found');
+  if (currentSearch) {
+    const q = currentSearch.toLowerCase();
+    d = d.filter(r => String(r['Original Name'] || '').toLowerCase().includes(q));
+  }
+  return d;
+}
+
+function renderTable(data) {
+  const cols = ['Original Name','HMDB IDs','HMDB Match Source','KEGG ID','KEGG Match Source','KEGG Matched Query'];
+  const thead = document.getElementById('tHead');
+  const tbody = document.getElementById('tBody');
+  thead.innerHTML = `<tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>`;
+  tbody.innerHTML = data.map(r => `<tr>${cols.map(c => {
+    const v = r[c] || '';
+    let cls = '';
+    if (c === 'Original Name') cls = 'col-name';
+    else if (c === 'KEGG ID') cls = v === 'Not Found' ? 'col-kegg not-found' : 'col-kegg found';
+    else if (c === 'HMDB IDs') cls = v === 'Not Found' ? 'col-hmdb not-found' : 'col-hmdb found';
+    else cls = 'col-src';
+    return `<td class="${cls}">${v}</td>`;
+  }).join('')}</tr>`).join('');
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderTable(filterData(allAnnotations));
+  });
+});
+
+// Search
+document.getElementById('searchInput').addEventListener('input', e => {
+  currentSearch = e.target.value.trim();
+  renderTable(filterData(allAnnotations));
+});
+
+/* ════════════════════════════════════════════════════
+   DOWNLOAD — original file + annotation cols at 2 & 3
+════════════════════════════════════════════════════ */
+document.getElementById('btnDl').addEventListener('click', () => {
+  if (!annotatedRows.length) return;
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(annotatedRows);
+
+  // Auto column widths
+  const colWidths = Object.keys(annotatedRows[0]).map(k => ({
+    wch: Math.max(k.length, ...annotatedRows.slice(0,50).map(r => String(r[k]||'').length), 10)
+  }));
+  ws['!cols'] = colWidths;
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Annotations');
+  const fname = uploadedFile
+    ? uploadedFile.name.replace(/\.[^.]+$/, '') + '_annotated.xlsx'
+    : 'metabolite_annotations.xlsx';
+  XLSX.writeFile(wb, fname);
+});
+</script>
+</body>
+</html>
