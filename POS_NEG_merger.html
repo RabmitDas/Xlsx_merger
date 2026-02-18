@@ -418,6 +418,7 @@
     <li>Both Excel files must share the <strong>same sheet names</strong> (e.g. N2.2FB, N22FB …)</li>
     <li>Each sheet must have columns named exactly <code>METABOLITE NAME</code> and <code>AREA</code></li>
     <li>File 1 = Positive-mode runs &nbsp;·&nbsp; File 2 = Negative-mode runs (any name is fine)</li>
+    <li>Metabolite names are preprocessed: <code>W/o ms2:</code> prefix removed, converted to lowercase</li>
     <li>Rows with invalid AREA values are automatically dropped before analysis</li>
     <li>Z-score threshold below controls which duplicates are treated as outliers</li>
   </ul>
@@ -597,11 +598,18 @@ function duplicateAnalysis(rows, zThresh, minRep) {
     return { error: 'Missing METABOLITE NAME or AREA column' };
   }
 
-  // Capitalise + parse area
-  let df = rows.map(r => ({
-    name: String(r['METABOLITE NAME'] || '').trim(),
-    area: toNum(r['AREA'])
-  })).filter(r => r.name && !isNaN(r.area));
+  // Preprocess: remove "W/o ms2:" prefix (case-insensitive) and convert to lowercase
+  let df = rows.map(r => {
+    let name = String(r['METABOLITE NAME'] || '').trim();
+    // Remove "W/o ms2:" or "w/o ms2:" prefix (case-insensitive)
+    name = name.replace(/^w\/o\s+ms2:\s*/i, '');
+    // Convert to lowercase
+    name = name.toLowerCase();
+    return {
+      name: name,
+      area: toNum(r['AREA'])
+    };
+  }).filter(r => r.name && !isNaN(r.area));
 
   const totalIn = df.length;
 
