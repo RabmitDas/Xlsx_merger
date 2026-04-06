@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>HMDB Metabolite Classifier</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;600;700&family=Lexend:wght@300;500;700;800&display=swap');
+
+:root {
+  --midnight:   #0a0e27;
+  --void:       #12182e;
+  --slate:      #1a2342;
+  --steel:      #2c3654;
+  --cyan:       #00fff7;
+  --cyan-dim:   #00b8b1;
+  --magenta:    #ff006e;
+  --yellow:     #ffbe0b;
+  --lime:       #8ac926;
+  --ice:        #e8f4f8;
+  --fog:        #8ea5b8;
+  --shadow:     rgba(10,14,39,0.7);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inconsolata', monospace;
+  background: var(--midnight);
+  color: var(--ice);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Animated gradient background */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 10%, rgba(0,255,247,.06) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 80% 90%, rgba(255,0,110,.08) 0%, transparent 50%);
+  animation: bg-shift 20s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes bg-shift {
+  0%   { opacity: 0.4; }
+  100% { opacity: 0.7; }
+}
+
+/* Scanlines effect */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,255,247,.02) 2px,
+    rgba(0,255,247,.02) 4px
+  );
+  pointer-events: none;
+  animation: scan 8s linear infinite;
+}
+@keyframes scan { 0% { transform: translateY(0); } 100% { transform: translateY(20px); } }
+
+.wrap { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; padding: 0 28px 80px; }
+
+/* ── Header ── */
+header {
+  padding: 60px 0 40px;
+  border-bottom: 2px solid var(--steel);
+  margin-bottom: 48px;
+  position: relative;
+}
+header h1 {
+  font-family: 'Lexend', sans-serif;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--magenta) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+}
+header p {
+  font-size: .84rem;
+  color: var(--fog);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.db-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 18px;
+  background: var(--void);
+  border: 1px solid var(--steel);
+  border-radius: 6px;
+  font-size: .76rem;
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--fog);
+  transition: background .3s;
+}
+.status-dot.loading { background: var(--yellow); animation: pulse 1s ease-in-out infinite; }
+.status-dot.ok { background: var(--lime); }
+.status-dot.err { background: var(--magenta); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── Cards ── */
+.card {
+  background: var(--void);
+  border: 1px solid var(--steel);
+  border-radius: 12px;
+  padding: 32px 36px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 24px var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  opacity: 0;
+  transition: opacity .3s;
+}
+.card:hover::before { opacity: 1; }
+
+.section-label {
+  font-size: .68rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+/* ── Upload ── */
+.drop-zone {
+  border: 2px dashed var(--steel);
+  border-radius: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .25s;
+  position: relative;
+  background: rgba(26,35,66,.3);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--cyan);
+  background: rgba(0,255,247,.05);
+  box-shadow: 0 0 20px rgba(0,255,247,.2);
+}
+.drop-zone.loaded {
+  border-color: var(--lime);
+  border-style: solid;
+  background: rgba(138,201,38,.05);
+}
+.drop-zone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 2;
+}
+.drop-icon {
+  font-size: 2.4rem;
+  margin-bottom: 14px;
+  display: block;
+  filter: drop-shadow(0 0 10px rgba(0,255,247,.4));
+}
+.drop-label {
+  font-family: 'Lexend', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ice);
+  margin-bottom: 6px;
+}
+.drop-sub {
+  font-size: .76rem;
+  color: var(--fog);
+}
+.file-info {
+  display: none;
+  margin-top: 16px;
+  padding: 10px 16px;
+  background: rgba(138,201,38,.1);
+  border: 1px solid var(--lime);
+  border-radius: 6px;
+  font-size: .74rem;
+  color: var(--lime);
+}
+.drop-zone.loaded .file-info { display: block; }
+
+/* ── Column requirement ── */
+.col-req {
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: var(--slate);
+  border-left: 3px solid var(--cyan);
+  border-radius: 4px;
+  font-size: .76rem;
+  line-height: 1.8;
+}
+.col-req code {
+  background: var(--midnight);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--yellow);
+  font-weight: 600;
+}
+
+/* ── Progress ── */
+.progress-wrap {
+  margin-top: 20px;
+  display: none;
+}
+.progress-wrap.visible { display: block; }
+.progress-bar-bg {
+  height: 6px;
+  background: var(--steel);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  width: 0%;
+  transition: width .4s ease;
+  box-shadow: 0 0 10px var(--cyan);
+}
+.progress-label {
+  font-size: .72rem;
+  color: var(--fog);
+  margin-top: 8px;
+}
+
+/* ── Button ── */
+.btn-primary {
+  width: 100%;
+  padding: 18px;
+  font-family: 'Lexend', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--cyan-dim) 100%);
+  color: var(--midnight);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all .2s;
+  box-shadow: 0 4px 16px rgba(0,255,247,.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.btn-primary::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, var(--magenta), var(--cyan));
+  opacity: 0;
+  transition: opacity .3s;
+}
+.btn-primary:hover:not(:disabled)::before { opacity: 1; }
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,255,247,.5);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-primary:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.btn-primary span {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Log ── */
+.log-box {
+  background: var(--midnight);
+  border: 1px solid var(--steel);
+  border-radius: 8px;
+  padding: 18px 20px;
+  height: 180px;
+  overflow-y: auto;
+  font-size: .76rem;
+  line-height: 1.9;
+  margin-bottom: 28px;
+  display: none;
+  font-family: 'Inconsolata', monospace;
+}
+.log-box.visible { display: block; }
+.log-line { display: flex; gap: 10px; }
+.log-line .ts { color: var(--fog); flex-shrink: 0; }
+.log-line .msg { color: var(--ice); }
+.log-line.ok .msg { color: var(--lime); }
+.log-line.err .msg { color: var(--magenta); }
+.log-line.info .msg { color: var(--cyan); }
+.log-line.warn .msg { color: var(--yellow); }
+
+/* ── Stats ── */
+.stats-grid {
+  display: none;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.stats-grid.visible { display: grid; }
+.stat-card {
+  background: var(--slate);
+  border: 1px solid var(--steel);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+}
+.stat-num {
+  font-family: 'Lexend', sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--cyan);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-pct {
+  font-size: .76rem;
+  color: var(--yellow);
+  margin-bottom: 4px;
+}
+.stat-lbl {
+  font-size: .68rem;
+  color: var(--fog);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* ── Table ── */
+.results-header {
+  font-family: 'Lexend', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--ice);
+  margin-bottom: 18px;
+  display: none;
+}
+.results-header.visible { display: block; }
+
+.table-outer {
+  border: 1px solid var(--steel);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 24px var(--shadow);
+  display: none;
+}
+.table-outer.visible { display: block; }
+
+.table-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--slate);
+  border-bottom: 1px solid var(--steel);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.search-input {
+  flex: 1;
+  min-width: 200px;
+  max-width: 350px;
+  background: var(--void);
+  border: 1px solid var(--steel);
+  border-radius: 6px;
+  padding: 9px 14px;
+  font-family: 'Inconsolata', monospace;
+  font-size: .8rem;
+  color: var(--ice);
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.search-input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0,255,247,.3);
+}
+.filter-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--steel);
+  background: var(--void);
+  color: var(--fog);
+  font-family: 'Inconsolata', monospace;
+  font-size: .72rem;
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .04em;
+}
+.filter-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.filter-btn.active {
+  background: var(--cyan);
+  color: var(--midnight);
+  border-color: var(--cyan);
+  font-weight: 600;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .78rem;
+}
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--void);
+}
+th {
+  padding: 13px 16px;
+  text-align: left;
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  border-bottom: 2px solid var(--steel);
+  white-space: nowrap;
+}
+td {
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(44,54,84,.5);
+  color: var(--ice);
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: rgba(0,255,247,.05); }
+td.not-found { color: var(--fog); font-style: italic; }
+td.found { color: var(--lime); }
+
+/* ── Download ── */
+.dl-strip {
+  display: none;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 40px;
+}
+.dl-strip.visible { display: flex; }
+.btn-dl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-radius: 8px;
+  border: 1px solid var(--cyan);
+  background: rgba(0,255,247,.1);
+  color: var(--cyan);
+  font-family: 'Lexend', sans-serif;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  box-shadow: 0 4px 12px rgba(0,255,247,.2);
+}
+.btn-dl:hover {
+  background: var(--cyan);
+  color: var(--midnight);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,255,247,.4);
+}
+
+/* ── Spinner ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border: 2px solid rgba(232,244,248,.2);
+  border-top-color: var(--ice);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+.fade-up { animation: fadeUp .4s ease both; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--void); }
+::-webkit-scrollbar-thumb { background: var(--steel); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ── Header ── -->
+<header>
+  <h1>HMDB Metabolite Classifier</h1>
+  <p>Taxonomy Lookup · Super Class · Class · Sub Class · Kingdom</p>
+  <div class="db-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Database not loaded</span>
+  </div>
+</header>
+
+<!-- ── DB Load ── -->
+<div class="card">
+  <div class="section-label">Step 1 — Load HMDB Taxonomy Database</div>
+  <p style="font-size:.82rem;color:var(--fog);line-height:1.7;margin-bottom:16px;">
+    The taxonomy database is fetched from this repository.
+    Click <strong>Load Database</strong> once — it stays in memory for the session.
+  </p>
+  <button class="btn-primary" id="btnLoadDb">
+    <span id="dbIcon">⬇</span>
+    <span id="dbText">Load Database from Repo</span>
+  </button>
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-label" id="progressLabel"></div>
+  </div>
+</div>
+
+<!-- ── Upload ── -->
+<div class="card">
+  <div class="section-label">Step 2 — Upload Excel File with HMDB IDs</div>
+  <div class="drop-zone" id="dropZone">
+    <input type="file" accept=".csv,.xlsx,.xls" id="fileInput"/>
+    <span class="drop-icon">📊</span>
+    <div class="drop-label">Drop your Excel or CSV file here</div>
+    <div class="drop-sub">Must contain "HMDB ID" and "Metabolite names" columns</div>
+    <div class="file-info" id="fileInfo">—</div>
+  </div>
+  <div class="col-req">
+    Required columns: <code>HMDB ID</code> and <code>Metabolite names</code>
+    <br>Supports single or multi-sheet Excel files
+  </div>
+</div>
+
+<!-- ── Run ── -->
+<button class="btn-primary" id="btnRun" disabled>
+  <span id="runIcon">▶</span>
+  <span id="runText">Classify Metabolites</span>
+</button>
+
+<!-- ── Log ── -->
+<div class="log-box" id="logBox"></div>
+
+<!-- ── Stats ── -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card"><div class="stat-num" id="st0">—</div><div class="stat-lbl">Total</div></div>
+  <div class="stat-card"><div class="stat-num" id="st1">—</div><div class="stat-pct" id="pct1"></div><div class="stat-lbl">Found</div></div>
+  <div class="stat-card"><div class="stat-num" id="st2">—</div><div class="stat-pct" id="pct2"></div><div class="stat-lbl">Not Found</div></div>
+</div>
+
+<!-- ── Results ── -->
+<div class="results-header" id="resHdr">Classification Results</div>
+<div class="table-outer" id="tableOuter">
+  <div class="table-controls">
+    <input class="search-input" id="searchInput" placeholder="Search metabolite or HMDB ID…"/>
+    <div class="filter-btns">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="found">Found</button>
+      <button class="filter-btn" data-filter="notfound">Not Found</button>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table id="dataTable"><thead id="tHead"></thead><tbody id="tBody"></tbody></table>
+  </div>
+</div>
+
+<!-- ── Download ── -->
+<div class="dl-strip" id="dlStrip">
+  <button class="btn-dl" id="btnDl">⬇ Download Classified Excel</button>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+/* ════════════════════════════════════════════════════
+   CONFIG
+════════════════════════════════════════════════════ */
+const DB_URL = './db/hmdb_taxonomy.json';
+
+/* ── State ── */
+let hmdbTaxonomy = null;  // { "HMDB0000001": { name, super_class, class, ... }, ... }
+let uploadedFile = null;
+let allResults = [];
+let outputData = {};  // For multi-sheet support
+
+/* ── Logging ── */
+function ts() { return new Date().toTimeString().slice(0,8); }
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  box.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = 'log-line ' + type;
+  d.innerHTML = `<span class="ts">[${ts()}]</span><span class="msg">${msg}</span>`;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setStatus(state, text) {
+  document.getElementById('statusDot').className = 'status-dot ' + state;
+  document.getElementById('statusText').textContent = text;
+}
+function setProgress(pct, label) {
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+/* ════════════════════════════════════════════════════
+   DB Loading
+════════════════════════════════════════════════════ */
+document.getElementById('btnLoadDb').addEventListener('click', loadDatabase);
+
+async function loadDatabase() {
+  const btn = document.getElementById('btnLoadDb');
+  btn.disabled = true;
+  document.getElementById('dbIcon').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('dbText').textContent = 'Loading…';
+  document.getElementById('progressWrap').classList.add('visible');
+
+  setStatus('loading', 'Loading taxonomy database…');
+  setProgress(10, 'Fetching HMDB taxonomy JSON…');
+  log('Fetching taxonomy database from repository…', 'info');
+
+  try {
+    const res = await fetch(DB_URL);
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+    
+    setProgress(60, 'Parsing JSON…');
+    hmdbTaxonomy = await res.json();
+    
+    const count = Object.keys(hmdbTaxonomy).length;
+    setStatus('ok', `Database loaded — ${count.toLocaleString()} entries`);
+    setProgress(100, `Database ready (${count.toLocaleString()} entries)`);
+    log(`Taxonomy database loaded: ${count.toLocaleString()} entries`, 'ok');
+    log('Upload your Excel file to continue.', 'info');
+
+    document.getElementById('dbIcon').textContent = '✓';
+    document.getElementById('dbText').textContent = 'Database Loaded';
+    checkReady();
+
+  } catch(err) {
+    log('ERROR: ' + err.message, 'err');
+    log('Check that db/hmdb_taxonomy.json exists in the repo.', 'warn');
+    setStatus('err', 'Database load failed');
+    btn.disabled = false;
+    document.getElementById('dbIcon').textContent = '↺';
+    document.getElementById('dbText').textContent = 'Retry Load';
+  }
+}
+
+/* ════════════════════════════════════════════════════
+   File Upload
+════════════════════════════════════════════════════ */
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+async function loadFile(file) {
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['csv','xlsx','xls'].includes(ext)) {
+    log('Only CSV and Excel (.xlsx/.xls) files are accepted.', 'err'); return;
+  }
+  uploadedFile = file;
+  document.getElementById('fileInfo').textContent =
+    `${file.name}  ·  ${(file.size/1024).toFixed(1)} KB`;
+  dropZone.classList.add('loaded');
+  log(`File ready: ${file.name}`, 'ok');
+  checkReady();
+}
+
+fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  loadFile(e.dataTransfer.files[0]);
+});
+
+function checkReady() {
+  document.getElementById('btnRun').disabled = !(hmdbTaxonomy && uploadedFile);
+}
+
+/* ════════════════════════════════════════════════════
+   Read File
+════════════════════════════════════════════════════ */
+function readExcelFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = e.target.result;
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'csv') {
+          const text = new TextDecoder().decode(data);
+          const wb = XLSX.read(text, { type: 'string' });
+          const sheets = {};
+          wb.SheetNames.forEach(name => {
+            sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
+          });
+          resolve(sheets);
+        } else {
+          const wb = XLSX.read(data, { type: 'array' });
+          const sheets = {};
+          wb.SheetNames.forEach(name => {
+            sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
+          });
+          resolve(sheets);
+        }
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ════════════════════════════════════════════════════
+   Classification Logic
+════════════════════════════════════════════════════ */
+function classifyMetabolite(hmdbId, metaboliteName) {
+  const taxonomy = hmdbTaxonomy[hmdbId];
+  
+  if (taxonomy) {
+    return {
+      "Metabolite": metaboliteName,
+      "HMDB ID": hmdbId,
+      "Super Class": taxonomy.super_class,
+      "Class": taxonomy.class,
+      "Sub Class": taxonomy.sub_class,
+      "Direct Parent": taxonomy.direct_parent,
+      "Kingdom": taxonomy.kingdom
+    };
+  } else {
+    return {
+      "Metabolite": metaboliteName,
+      "HMDB ID": hmdbId,
+      "Super Class": "Not Found",
+      "Class": "Not Found",
+      "Sub Class": "Not Found",
+      "Direct Parent": "Not Found",
+      "Kingdom": "Not Found"
+    };
+  }
+}
+
+/* ════════════════════════════════════════════════════
+   RUN
+════════════════════════════════════════════════════ */
+document.getElementById('btnRun').addEventListener('click', async () => {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = true;
+  document.getElementById('runIcon').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('runText').textContent = 'Classifying…';
+  document.getElementById('logBox').innerHTML = '';
+  document.getElementById('logBox').classList.add('visible');
+
+  try {
+    log('Reading Excel file…', 'info');
+    const sheets = await readExcelFile(uploadedFile);
+    const sheetNames = Object.keys(sheets);
+    log(`Found ${sheetNames.length} sheet(s): ${sheetNames.join(', ')}`, 'ok');
+
+    outputData = {};
+    allResults = [];
+    let totalProcessed = 0;
+    let totalFound = 0;
+
+    for (const sheetName of sheetNames) {
+      log(`Processing sheet: ${sheetName}`, 'info');
+      const rows = sheets[sheetName];
+      
+      if (!rows.length) {
+        log(`  Skipping empty sheet`, 'warn');
+        continue;
+      }
+
+      // Validate columns
+      const cols = Object.keys(rows[0]);
+      if (!cols.includes('HMDB ID') || !cols.includes('Metabolite names')) {
+        log(`  ERROR: Missing required columns (HMDB ID, Metabolite names)`, 'err');
+        continue;
+      }
+
+      const sheetResults = [];
+      for (const row of rows) {
+        const hmdbId = String(row['HMDB ID'] || '').trim();
+        const metName = String(row['Metabolite names'] || '').trim();
+        
+        if (!hmdbId || !metName) continue;
+
+        const result = classifyMetabolite(hmdbId, metName);
+        sheetResults.push(result);
+        allResults.push(result);
+        totalProcessed++;
+        if (result['Super Class'] !== 'Not Found') totalFound++;
+      }
+
+      outputData[sheetName] = sheetResults;
+      log(`  Processed ${sheetResults.length} metabolites`, 'ok');
+    }
+
+    const totalNotFound = totalProcessed - totalFound;
+    log(`Classification complete: ${totalProcessed} total`, 'ok');
+    log(`  Found: ${totalFound} | Not Found: ${totalNotFound}`, 'info');
+
+    // Stats
+    const pct = v => totalProcessed ? `${(v/totalProcessed*100).toFixed(0)}%` : '—';
+    document.getElementById('st0').textContent = totalProcessed;
+    document.getElementById('st1').textContent = totalFound;
+    document.getElementById('pct1').textContent = pct(totalFound);
+    document.getElementById('st2').textContent = totalNotFound;
+    document.getElementById('pct2').textContent = pct(totalNotFound);
+    document.getElementById('statsGrid').classList.add('visible','fade-up');
+
+    // Table
+    buildTable(allResults);
+
+    document.getElementById('resHdr').classList.add('visible','fade-up');
+    document.getElementById('tableOuter').classList.add('visible','fade-up');
+    document.getElementById('dlStrip').classList.add('visible','fade-up');
+
+    btn.disabled = false;
+    document.getElementById('runIcon').textContent = '✓';
+    document.getElementById('runText').textContent = 'Done — Run Again?';
+
+  } catch(err) {
+    log('ERROR: ' + err.message, 'err');
+    btn.disabled = false;
+    document.getElementById('runIcon').textContent = '▶';
+    document.getElementById('runText').textContent = 'Classify Metabolites';
+  }
+});
+
+/* ════════════════════════════════════════════════════
+   TABLE
+════════════════════════════════════════════════════ */
+let currentFilter = 'all';
+let currentSearch = '';
+
+function buildTable(data) {
+  renderTable(filterData(data));
+}
+
+function filterData(data) {
+  let d = data;
+  if (currentFilter === 'found') d = d.filter(r => r['Super Class'] !== 'Not Found');
+  if (currentFilter === 'notfound') d = d.filter(r => r['Super Class'] === 'Not Found');
+  if (currentSearch) {
+    const q = currentSearch.toLowerCase();
+    d = d.filter(r =>
+      String(r['Metabolite'] || '').toLowerCase().includes(q) ||
+      String(r['HMDB ID'] || '').toLowerCase().includes(q)
+    );
+  }
+  return d;
+}
+
+function renderTable(data) {
+  const cols = ['Metabolite','HMDB ID','Super Class','Class','Sub Class','Direct Parent','Kingdom'];
+  const thead = document.getElementById('tHead');
+  const tbody = document.getElementById('tBody');
+  
+  thead.innerHTML = `<tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>`;
+  tbody.innerHTML = data.map(r => `<tr>${cols.map(c => {
+    const v = r[c] || '';
+    const cls = v === 'Not Found' || v === 'Not Available' ? 'not-found' : 'found';
+    return `<td class="${cls}">${v}</td>`;
+  }).join('')}</tr>`).join('');
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderTable(filterData(allResults));
+  });
+});
+
+// Search
+document.getElementById('searchInput').addEventListener('input', e => {
+  currentSearch = e.target.value.trim();
+  renderTable(filterData(allResults));
+});
+
+/* ════════════════════════════════════════════════════
+   DOWNLOAD
+════════════════════════════════════════════════════ */
+document.getElementById('btnDl').addEventListener('click', () => {
+  if (!Object.keys(outputData).length) return;
+  
+  const wb = XLSX.utils.book_new();
+  for (const [sheetName, rows] of Object.entries(outputData)) {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0,31));
+  }
+  
+  const fname = uploadedFile
+    ? uploadedFile.name.replace(/\.[^.]+$/, '') + '_with_classes.xlsx'
+    : 'metabolite_classifications.xlsx';
+  XLSX.writeFile(wb, fname);
+});
+</script>
+</body>
+</html>
