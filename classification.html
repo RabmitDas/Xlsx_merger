@@ -605,7 +605,7 @@ td.found { color: var(--lime); }
 /* ════════════════════════════════════════════════════
    CONFIG
 ════════════════════════════════════════════════════ */
-const DB_URL = './db/hmdb_name_to_id.json';
+const DB_URL = './db/hmdb_taxonomy.json';
 
 /* ── State ── */
 let hmdbTaxonomy = null;  // { "HMDB0000001": { name, super_class, class, ... }, ... }
@@ -669,7 +669,7 @@ async function loadDatabase() {
 
   } catch(err) {
     log('ERROR: ' + err.message, 'err');
-    log('Check that db/hmdb_name_to_id.json exists in the repo.', 'warn');
+    log('Check that db/hmdb_taxonomy.json exists in the repo.', 'warn');
     setStatus('err', 'Database load failed');
     btn.disabled = false;
     document.getElementById('dbIcon').textContent = '↺';
