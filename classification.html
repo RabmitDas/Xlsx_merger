@@ -661,6 +661,11 @@ async function loadDatabase() {
     setStatus('ok', `Database loaded — ${count.toLocaleString()} entries`);
     setProgress(100, `Database ready (${count.toLocaleString()} entries)`);
     log(`Taxonomy database loaded: ${count.toLocaleString()} entries`, 'ok');
+    
+    // Show sample IDs from database for debugging
+    const sampleIds = Object.keys(hmdbTaxonomy).slice(0, 5);
+    log(`Sample database IDs: ${sampleIds.join(', ')}`, 'info');
+    
     log('Upload your Excel file to continue.', 'info');
 
     document.getElementById('dbIcon').textContent = '✓';
@@ -745,13 +750,51 @@ function readExcelFile(file) {
 /* ════════════════════════════════════════════════════
    Classification Logic
 ════════════════════════════════════════════════════ */
+function normalizeHmdbId(id) {
+  if (!id) return '';
+  
+  // Convert to string and trim
+  id = String(id).trim().toUpperCase();
+  
+  // Remove any prefixes like "HMDB:" or "hmdb:"
+  id = id.replace(/^HMDB:/i, '');
+  
+  // If it's just a number, pad it to 7 digits with leading zeros
+  if (/^\d+$/.test(id)) {
+    id = 'HMDB' + id.padStart(7, '0');
+  }
+  // If it starts with HMDB but number part is too short, pad it
+  else if (/^HMDB\d+$/.test(id)) {
+    const num = id.replace('HMDB', '');
+    id = 'HMDB' + num.padStart(7, '0');
+  }
+  
+  return id;
+}
+
 function classifyMetabolite(hmdbId, metaboliteName) {
-  const taxonomy = hmdbTaxonomy[hmdbId];
+  // Normalize the HMDB ID
+  const normalizedId = normalizeHmdbId(hmdbId);
+  
+  // Try exact match first
+  let taxonomy = hmdbTaxonomy[normalizedId];
+  
+  // If not found, try original ID as-is
+  if (!taxonomy && hmdbId !== normalizedId) {
+    taxonomy = hmdbTaxonomy[hmdbId];
+  }
+  
+  // If still not found, try a few more variants
+  if (!taxonomy) {
+    // Try without HMDB prefix
+    const justNumber = normalizedId.replace('HMDB', '');
+    taxonomy = hmdbTaxonomy[justNumber] || hmdbTaxonomy['HMDB' + justNumber];
+  }
   
   if (taxonomy) {
     return {
       "Metabolite": metaboliteName,
-      "HMDB ID": hmdbId,
+      "HMDB ID": normalizedId,
       "Super Class": taxonomy.super_class,
       "Class": taxonomy.class,
       "Sub Class": taxonomy.sub_class,
@@ -761,7 +804,7 @@ function classifyMetabolite(hmdbId, metaboliteName) {
   } else {
     return {
       "Metabolite": metaboliteName,
-      "HMDB ID": hmdbId,
+      "HMDB ID": normalizedId + " (original: " + hmdbId + ")",
       "Super Class": "Not Found",
       "Class": "Not Found",
       "Sub Class": "Not Found",
@@ -810,11 +853,16 @@ document.getElementById('btnRun').addEventListener('click', async () => {
       }
 
       const sheetResults = [];
+      const sampleInputIds = [];
+      
       for (const row of rows) {
         const hmdbId = String(row['HMDB ID'] || '').trim();
         const metName = String(row['Metabolite names'] || '').trim();
         
         if (!hmdbId || !metName) continue;
+        
+        // Collect first 3 IDs for debugging
+        if (sampleInputIds.length < 3) sampleInputIds.push(hmdbId);
 
         const result = classifyMetabolite(hmdbId, metName);
         sheetResults.push(result);
@@ -823,6 +871,7 @@ document.getElementById('btnRun').addEventListener('click', async () => {
         if (result['Super Class'] !== 'Not Found') totalFound++;
       }
 
+      log(`  Sample input IDs: ${sampleInputIds.join(', ')}`, 'info');
       outputData[sheetName] = sheetResults;
       log(`  Processed ${sheetResults.length} metabolites`, 'ok');
     }
