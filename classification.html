@@ -558,7 +558,9 @@ td.found { color: var(--lime); }
   </div>
   <div class="col-req">
     Required columns: <code>HMDB ID</code> and <code>Metabolite names</code>
-    <br>Supports single or multi-sheet Excel files
+    <br>• If HMDB ID contains multiple IDs separated by semicolons, the first one is used
+    <br>• All other columns in your sheet are preserved in the output
+    <br>• Supports single or multi-sheet Excel files
   </div>
 </div>
 
@@ -856,8 +858,17 @@ document.getElementById('btnRun').addEventListener('click', async () => {
       const sampleInputIds = [];
       
       for (const row of rows) {
-        const hmdbId = String(row['HMDB ID'] || '').trim();
+        let hmdbId = String(row['HMDB ID'] || '').trim();
         const metName = String(row['Metabolite names'] || '').trim();
+        
+        // Handle semicolon-separated IDs - use the first one
+        if (hmdbId.includes(';')) {
+          const ids = hmdbId.split(';').map(id => id.trim()).filter(id => id);
+          hmdbId = ids[0] || '';
+          if (ids.length > 1) {
+            log(`  Using first ID from "${row['HMDB ID']}" → ${hmdbId}`, 'info');
+          }
+        }
         
         if (!hmdbId || !metName) continue;
         
@@ -865,8 +876,24 @@ document.getElementById('btnRun').addEventListener('click', async () => {
         if (sampleInputIds.length < 3) sampleInputIds.push(hmdbId);
 
         const result = classifyMetabolite(hmdbId, metName);
-        sheetResults.push(result);
-        allResults.push(result);
+        
+        // Preserve all original columns from the input row
+        const finalRow = {};
+        
+        // First, add all original columns in their original order
+        for (const col of cols) {
+          finalRow[col] = row[col];
+        }
+        
+        // Then add classification columns
+        finalRow["Super Class"] = result["Super Class"];
+        finalRow["Class"] = result["Class"];
+        finalRow["Sub Class"] = result["Sub Class"];
+        finalRow["Direct Parent"] = result["Direct Parent"];
+        finalRow["Kingdom"] = result["Kingdom"];
+        
+        sheetResults.push(finalRow);
+        allResults.push(result);  // Keep this for table display
         totalProcessed++;
         if (result['Super Class'] !== 'Not Found') totalFound++;
       }
